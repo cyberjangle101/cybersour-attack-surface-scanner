@@ -1,5 +1,3 @@
-//go:debug tls10server=1
-
 package main
 
 import (
