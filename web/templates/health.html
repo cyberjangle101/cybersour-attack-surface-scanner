@@ -4,8 +4,8 @@
     <h1>System health</h1>
     <p class="muted">Whether each data source and service the agent depends on is connected. Status comes from real scans and from the check button.</p>
   </div>
-  {{if .IsAdmin}}<form method="post" action="/health/check" class="inline"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="btn primary" type="submit" data-busy="Checking…">Check connections now</button></form>{{end}}
-  {{if and .IsAdmin .CanStop}}<form method="post" action="/system/stop" class="inline" data-confirm="Stop the EASM Agent? Scans and the web interface stop until the program is started again."><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="btn danger" type="submit">Stop agent</button></form>{{end}}
+  {{if .IsAdmin}}<form method="post" action="/health/check" class="inline"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="btn primary" type="submit" data-busy="Checking…">Check connections now</button></form>{{end}} {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
+  {{if and .IsAdmin .CanStop}}<form method="post" action="/system/stop" class="inline" data-confirm="Stop the EASM Agent? Scans and the web interface stop until the program is started again."><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="btn danger" type="submit">Stop agent</button></form>{{end}} {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
 </div>
 
 <div class="stats">

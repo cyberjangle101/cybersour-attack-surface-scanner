@@ -12,7 +12,7 @@
       <td>{{if .T.Enabled}}{{until .T.NextScan}}{{else}}—{{end}}</td>
       <td class="actions">
         {{if $.CanTriage}}{{if .T.Enabled}}
-        <form method="post" action="/targets/{{.T.ID}}/scan" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn small" type="submit">Scan now</button></form>
+        <form method="post" action="/targets/{{.T.ID}}/scan" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn small" type="submit">Scan now</button></form> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
         {{end}}{{end}}
         {{if $.IsAdmin}}<a class="icon-btn danger" href="/targets/{{.T.ID}}/delete" title="Delete {{.T.Domain}} and all of its data" aria-label="Delete {{.T.Domain}}"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14M10 11v6M14 11v6"/></svg></a>{{end}}
       </td>

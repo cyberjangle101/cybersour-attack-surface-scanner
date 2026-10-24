@@ -9,12 +9,12 @@
   {{if .CanTriage}}
   <div class="actions">
     {{if .T.Enabled}}
-    <form method="post" action="/targets/{{.T.ID}}/scan" class="inline"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="btn primary" type="submit">Scan now</button></form>
-    <form method="post" action="/targets/{{.T.ID}}/scan" class="inline" title="Ignore saved Shodan, InternetDB, Censys, VirusTotal and RDAP answers and ask again, so new exposures show up now instead of when the saved answer expires."><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="refresh" value="1"><button class="btn" type="submit">Scan now and refresh exposure data</button></form>
-    {{if .IsAdmin}}<form method="post" action="/targets/{{.T.ID}}/scan" class="inline" title="Also connect to this domain's own servers for this scan: TLS certificates, home pages, exposed files and cloud storage, as set under Settings → Active checks. More accurate than public data alone." data-confirm="Run active checks against {{.T.Domain}}? The agent will connect to its servers. Only do this for systems you are allowed to test."><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="active" value="1"><button class="btn" type="submit">Scan now with active checks</button></form>{{end}}
-    {{if .IsAdmin}}<form method="post" action="/targets/{{.T.ID}}/pause" class="inline"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="btn" type="submit">Pause</button></form>{{end}}
+    <form method="post" action="/targets/{{.T.ID}}/scan" class="inline"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="btn primary" type="submit">Scan now</button></form> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
+    <form method="post" action="/targets/{{.T.ID}}/scan" class="inline" title="Ignore saved Shodan, InternetDB, Censys, VirusTotal and RDAP answers and ask again, so new exposures show up now instead of when the saved answer expires."><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="refresh" value="1"><button class="btn" type="submit">Scan now and refresh exposure data</button></form> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
+    {{if .IsAdmin}}<form method="post" action="/targets/{{.T.ID}}/scan" class="inline" title="Also connect to this domain's own servers for this scan: TLS certificates, home pages, exposed files and cloud storage, as set under Settings → Active checks. More accurate than public data alone." data-confirm="Run active checks against {{.T.Domain}}? The agent will connect to its servers. Only do this for systems you are allowed to test."><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="active" value="1"><button class="btn" type="submit">Scan now with active checks</button></form>{{end}} {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
+    {{if .IsAdmin}}<form method="post" action="/targets/{{.T.ID}}/pause" class="inline"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="btn" type="submit">Pause</button></form>{{end}} {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
     {{else if .IsAdmin}}
-    <form method="post" action="/targets/{{.T.ID}}/resume" class="inline"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="btn primary" type="submit">Resume</button></form>
+    <form method="post" action="/targets/{{.T.ID}}/resume" class="inline"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="btn primary" type="submit">Resume</button></form> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
     {{end}}
     <a class="btn" href="/report?target={{.T.Domain | urlquery}}">Report</a>
   </div>
@@ -43,8 +43,8 @@
   <div class="scroll"><table>
     <thead><tr><th>Domain</th><th>Why</th><th></th></tr></thead>
     <tbody>{{range .Suggestions}}<tr><td class="mono">{{.Domain}}</td><td class="prose small">{{.Detail}}</td>
-      <td class="actions">{{if $.IsAdmin}}<form method="post" action="/targets/{{$.T.ID}}/suggestions/accept" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="domain" value="{{.Domain}}"><button class="btn small primary" type="submit">Monitor it</button></form>{{end}}
-      {{if $.CanTriage}}<form method="post" action="/targets/{{$.T.ID}}/suggestions/dismiss" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="domain" value="{{.Domain}}"><button class="btn small" type="submit">Not mine</button></form>{{end}}</td></tr>{{end}}</tbody>
+      <td class="actions">{{if $.IsAdmin}}<form method="post" action="/targets/{{$.T.ID}}/suggestions/accept" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="domain" value="{{.Domain}}"><button class="btn small primary" type="submit">Monitor it</button></form>{{end}} {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
+      {{if $.CanTriage}}<form method="post" action="/targets/{{$.T.ID}}/suggestions/dismiss" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="domain" value="{{.Domain}}"><button class="btn small" type="submit">Not mine</button></form>{{end}}</td></tr>{{end}}</tbody> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
   </table></div>
 </section>{{end}}
 
@@ -101,7 +101,7 @@
 {{if .IsAdmin}}
 <section class="card">
   <h2>Settings for this domain</h2>
-  <form method="post" action="/targets/{{.T.ID}}/edit" class="grid">
+  <form method="post" action="/targets/{{.T.ID}}/edit" class="grid"> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <label>Expected ASNs <textarea name="asns" rows="2" placeholder="AS13335, AS16509">{{asns .T.ExpectedASNs}}</textarea></label>
     <label>Expected organisation keywords <textarea name="keywords" rows="2">{{lines .T.ExpectedOrgKeywords}}</textarea></label>
@@ -115,7 +115,7 @@
 <section class="card danger">
   <h2>Remove this domain</h2>
   <p class="muted">Stops monitoring and permanently deletes all stored data for {{.T.Domain}} (hosts, records, certificates, findings, history).</p>
-  <form method="post" action="/targets/{{.T.ID}}/delete" class="inline-form" data-confirm="Permanently remove {{.T.Domain}} and all of its data?">
+  <form method="post" action="/targets/{{.T.ID}}/delete" class="inline-form" data-confirm="Permanently remove {{.T.Domain}} and all of its data?"> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <input name="confirm" placeholder="Type {{.T.Domain}} to confirm" autocomplete="off" required>
     <button class="btn bad" type="submit">Remove</button>

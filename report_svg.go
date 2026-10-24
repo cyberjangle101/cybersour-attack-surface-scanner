@@ -54,7 +54,7 @@ func donutSVG(by map[string]int) template.HTML {
 		fmt.Fprintf(&b, `<text x="80" y="88" class="big" text-anchor="middle">%d</text>`, total)
 	}
 	b.WriteString(`<text x="80" y="104" class="small" text-anchor="middle">open</text></svg>`)
-	return template.HTML(b.String()) //nolint:gosec // G203: built from numbers and fixed class names
+	return template.HTML(b.String()) //nolint:gosec // G203: built from numbers and fixed class names // nosemgrep: go.lang.security.audit.xss.template-html-does-not-escape.unsafe-template-type -- no caller text
 }
 
 // legendHTML is the key for the donut.
@@ -65,7 +65,7 @@ func legendHTML(by map[string]int) template.HTML {
 		fmt.Fprintf(&b, `<li><span class="sw bg-%s"></span>%s <strong>%d</strong></li>`, s, strings.ToUpper(s[:1])+s[1:], by[s])
 	}
 	b.WriteString(`</ul>`)
-	return template.HTML(b.String()) //nolint:gosec // G203: built from fixed words and numbers
+	return template.HTML(b.String()) //nolint:gosec // G203: built from fixed words and numbers // nosemgrep: go.lang.security.audit.xss.template-html-does-not-escape.unsafe-template-type -- no caller text
 }
 
 // trendSVG draws new (red) against resolved (green) findings per day or week.
@@ -101,7 +101,7 @@ func trendSVG(tb []TrendBucket) template.HTML {
 		}
 	}
 	b.WriteString(`</svg>`)
-	return template.HTML(b.String()) //nolint:gosec // G203: numbers and escaped labels only
+	return template.HTML(b.String()) //nolint:gosec // G203: numbers and escaped labels only // nosemgrep: go.lang.security.audit.xss.template-html-does-not-escape.unsafe-template-type -- labels pass through esc()
 }
 
 // barItem is one row of a horizontal bar chart.
@@ -135,7 +135,7 @@ func hbarSVG(items []barItem, label string) template.HTML {
 		fmt.Fprintf(&b, `<text x="%.1f" y="%.1f" class="small">%d</text>`, labelW+bw+6, y+15, it.Value)
 	}
 	b.WriteString(`</svg>`)
-	return template.HTML(b.String()) //nolint:gosec // G203: numbers and escaped labels only
+	return template.HTML(b.String()) //nolint:gosec // G203: numbers and escaped labels only // nosemgrep: go.lang.security.audit.xss.template-html-does-not-escape.unsafe-template-type -- labels pass through esc()
 }
 
 func ellipsize(s string, n int) string {

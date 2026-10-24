@@ -13,9 +13,9 @@
       <td>{{.MinSev}}</td>
       <td>{{if .LastErr}}<span class="flash bad">{{.LastErr}}</span>{{else if .LastOK}}OK {{.LastOK}}{{else}}not used yet{{end}}</td>
       <td class="actions">
-        <form method="post" action="/settings/channels/{{.ID}}/test"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn" type="submit" data-busy="Sending…">Test</button></form>
-        <form method="post" action="/settings/channels/{{.ID}}/toggle"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn" type="submit">{{if .Enabled}}Turn off{{else}}Turn on{{end}}</button></form>
-        <form method="post" action="/settings/channels/{{.ID}}/delete"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn danger" type="submit">Remove</button></form>
+        <form method="post" action="/settings/channels/{{.ID}}/test"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn" type="submit" data-busy="Sending…">Test</button></form> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
+        <form method="post" action="/settings/channels/{{.ID}}/toggle"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn" type="submit">{{if .Enabled}}Turn off{{else}}Turn on{{end}}</button></form> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
+        <form method="post" action="/settings/channels/{{.ID}}/delete"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn danger" type="submit">Remove</button></form> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
       </td>
     </tr>{{end}}</tbody>
   </table></div>

@@ -177,7 +177,7 @@ func (s *Server) twoFactorView(w http.ResponseWriter, r *http.Request, sess *Ses
 			s.serverError(w, r, sess, err)
 			return
 		}
-		data["Secret"], data["QR"] = groupSecret(secret), template.URL(qr) //nolint:gosec // G203: a PNG data: URI we just generated
+		data["Secret"], data["QR"] = groupSecret(secret), template.URL(qr) //nolint:gosec // G203: a PNG data: URI we just generated // nosemgrep: go.lang.security.audit.xss.template-html-does-not-escape.unsafe-template-type -- html/template would block a data: URI given as a string
 	}
 	s.render(w, r, sess, "twofactor", http.StatusOK, data)
 }

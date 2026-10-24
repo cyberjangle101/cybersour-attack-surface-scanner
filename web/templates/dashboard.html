@@ -5,7 +5,7 @@
 {{if .ShowGuide}}
 <section class="card guide" id="guide">
   <div class="head"><h2>Welcome: how this works</h2>
-    <form method="post" action="/guide/dismiss" class="inline"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="btn small" type="submit">Hide this</button></form></div>
+    <form method="post" action="/guide/dismiss" class="inline"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="btn small" type="submit">Hide this</button></form></div> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
   <p>EASM Agent shows your organisation as an outsider sees it and tells you when something <strong>changes</strong>: new sub-domains and servers, take-over risks, expiring certificates, weak email protection, exposed services.</p>
   <ol class="steps">
     <li>{{if .IsAdmin}}Add your main domain below (for example <span class="mono">example.com</span>).{{else}}Ask an administrator to add your main domain.{{end}}</li>
@@ -27,7 +27,7 @@
 <section class="card" id="add">
   <h2>Add an entity to monitor</h2>
   <p class="muted">Enter a root domain. The agent finds its subdomains and certificates, resolves them, checks who owns the addresses, and then watches for changes on a schedule. The first scan is silent (it just records what exists today).</p>
-  <form method="post" action="/targets" class="grid">
+  <form method="post" action="/targets" class="grid"> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <label class="wide">Domain <input name="domain" placeholder="example.com" value="{{index .Form "domain"}}" required autocomplete="off" spellcheck="false"><span class="hint">Names with accented or non-Latin letters (such as bücher.example) are converted to their ASCII form (xn--bcher-kva.example) automatically.</span></label>
     <details class="wide" {{if or (index .Form "asns") (index .Form "keywords") (index .Form "ignore") (index .Form "interval") (index .Form "notes")}}open{{end}}>

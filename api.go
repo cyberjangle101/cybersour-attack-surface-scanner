@@ -357,7 +357,7 @@ var stixNS = [16]byte{0x6c, 0x1d, 0x0e, 0x5a, 0x91, 0x32, 0x4b, 0x7f, 0x8a, 0x44
 
 // uuid5 makes a name-based UUID (RFC 4122 v5) so repeated exports give the same ids.
 func uuid5(name string) string {
-	h := sha1.New() //nolint:gosec // see import note
+	h := sha1.New() //nolint:gosec // see import note // nosemgrep: go.lang.security.audit.crypto.use_of_weak_crypto.use-of-sha1 -- RFC 4122 v5 UUIDs are defined with SHA-1; not a security use
 	h.Write(stixNS[:])
 	h.Write([]byte(name))
 	b := h.Sum(nil)[:16]

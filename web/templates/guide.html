@@ -1,5 +1,5 @@
 {{define "content"}}
-<div class="head"><h1>Quick guide</h1>{{if .Dismissable}}<form method="post" action="/guide/dismiss" class="inline"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="btn" type="submit">Got it, hide the guide on the dashboard</button></form>{{end}}</div>
+<div class="head"><h1>Quick guide</h1>{{if .Dismissable}}<form method="post" action="/guide/dismiss" class="inline"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="btn" type="submit">Got it, hide the guide on the dashboard</button></form>{{end}}</div> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
 
 <section class="card">
   <h2>What this tool does</h2>

@@ -38,7 +38,7 @@
 <section class="card">
   <h2>Test</h2>
   <p class="muted">Tests the <em>saved</em> settings. Leave the person blank to test only the connection and service account. The test signs nobody in.</p>
-  <form method="post" action="/settings/ad/test" class="grid">
+  <form method="post" action="/settings/ad/test" class="grid"> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <label>Username <input name="test_user" autocomplete="off"></label>
     <label>Password <input type="password" name="test_password" autocomplete="off"></label>
