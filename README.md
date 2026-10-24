@@ -32,7 +32,7 @@ Attack surfaces drift. A forgotten subdomain, a new certificate or an unexpected
 1. Build (or use the provided binary): `go mod tidy && go build -o easm-agent .`
    Windows: `go build -o easm-agent.exe .`
 2. Run it: `easm-agent` (Windows: double-click or run `easm-agent.exe` in a terminal).
-3. Open **http://127.0.0.1:8080** and create the first administrator account.
+3. Open **https://127.0.0.1:8080** and create the first administrator account.
 4. **Settings** → configure email (SMTP) and press *Send test email*.
 5. **Dashboard** → *Add an entity to monitor*: enter `example.com`. Optionally add expected ASNs,
    organisation keywords and ignore patterns. Scanning starts immediately.
