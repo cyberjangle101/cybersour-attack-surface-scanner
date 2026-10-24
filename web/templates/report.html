@@ -2,27 +2,68 @@
 <div class="head">
   <h1>Report: {{.R.Scope}}</h1>
   <div class="actions noprint">
+    <a class="btn primary" href="{{href "/report.pdf" .Query}}">Download PDF</a>
+    <button class="btn" type="button" data-print>Print</button>
     <a class="btn" href="{{href "/report/inventory.csv" .Query}}">Hosts (CSV)</a>
     <a class="btn" href="{{href "/report/findings.csv" .Query}}">Findings (CSV)</a>
-    <a class="btn" href="{{href "/report.json" .Query}}">Full report (JSON)</a>
-    <a class="btn" href="{{href "/report/findings.sarif" .Query}}">Findings (SARIF)</a>
-    <a class="btn" href="{{href "/report/findings.stix.json" .Query}}">Findings (STIX)</a>
-    <button class="btn primary" type="button" data-print>Print / save as PDF</button>
+    <a class="btn" href="{{href "/report.json" .Query}}">JSON</a>
+    <a class="btn" href="{{href "/report/findings.sarif" .Query}}">SARIF</a>
+    <a class="btn" href="{{href "/report/findings.stix.json" .Query}}">STIX</a>
   </div>
 </div>
-<form method="get" class="filters noprint">
+<form method="get" class="filters noprint sevfilter">
   <label>Domain <select name="target"><option value="">All domains</option>{{range .Targets}}<option value="{{.}}" {{if eq . $.Target}}selected{{end}}>{{.}}</option>{{end}}</select></label>
-  <label>Changes in the last <select name="days">
+  <label>Period <select name="days">
     <option value="1" {{if eq .Days 1}}selected{{end}}>24 hours</option>
     <option value="7" {{if eq .Days 7}}selected{{end}}>7 days</option>
     <option value="30" {{if eq .Days 30}}selected{{end}}>30 days</option>
-    <option value="90" {{if eq .Days 90}}selected{{end}}>90 days</option></select></label>
+    <option value="90" {{if eq .Days 90}}selected{{end}}>90 days</option>
+    <option value="365" {{if eq .Days 365}}selected{{end}}>1 year</option></select></label>
+  <span>Show in the detail sections:
+    <label><input type="checkbox" name="sev" value="high" {{if .R.Filter.Has "high"}}checked{{end}}> High</label>
+    <label><input type="checkbox" name="sev" value="medium" {{if .R.Filter.Has "medium"}}checked{{end}}> Medium</label>
+    <label><input type="checkbox" name="sev" value="low" {{if .R.Filter.Has "low"}}checked{{end}}> Low</label>
+    <label><input type="checkbox" name="sev" value="info" {{if .R.Filter.Has "info"}}checked{{end}}> Info</label></span>
   <button class="btn" type="submit">Update</button>
 </form>
 <p class="muted">Generated {{.R.Generated.Format "2006-01-02 15:04 MST"}} · changes since {{.R.Since.Format "2006-01-02 15:04 MST"}}</p>
+<nav class="toc noprint"><a href="#exec">Executive summary</a><a href="#open">Open findings</a><a href="#new">New</a><a href="#resolved">Resolved</a><a href="#byfinding">By finding</a><a href="#byasset">By asset</a><a href="#changes">Changes</a><a href="#inventory">Inventory</a></nav>
 
-<section class="card">
-  <h2>Summary</h2>
+{{with .R.Exec}}
+<section class="card exec" id="exec">
+  <h2>Executive summary</h2>
+  <p><span class="rating {{.RatingClass}}">{{.Rating}}</span> <span class="muted small">posture score {{.Score}} / 100</span></p>
+  <p>{{.Headline}}</p>
+  <div class="kpis">
+    <div class="kpi"><div class="n">{{.Domains}}</div><div class="l">Domains monitored</div></div>
+    <div class="kpi"><div class="n">{{.Hosts}}</div><div class="l">Hosts tracked</div></div>
+    <div class="kpi"><div class="n">{{.Open}}</div><div class="l">Open findings</div></div>
+    <div class="kpi"><div class="n">{{index .OpenBySev "high"}}</div><div class="l">High severity</div></div>
+    <div class="kpi"><div class="n">{{.NewCount}}</div><div class="l">New this period</div></div>
+    <div class="kpi"><div class="n">{{.Resolved}}</div><div class="l">Fixed this period</div></div>
+  </div>
+  <div class="charts">
+    <div><h3>Open findings by severity</h3><div class="flex">{{donut .OpenBySev}}{{legend .OpenBySev}}</div></div>
+    <div><h3>New and fixed over time</h3>{{trend .Trend}}<p class="small"><span class="sw bg-new"></span>New <span class="sw bg-fixed"></span>Fixed</p></div>
+    <div><h3>What kind of problems</h3>{{hbar (catBars .Categories) "Open findings by category"}}</div>
+    <div><h3>Most affected assets</h3>{{hbar (assetBars .TopAssets) "Open findings by asset"}}</div>
+  </div>
+  {{if .TopRisks}}
+  <h3>Biggest risks</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>Severity</th><th>Risk</th><th class="num">Assets</th><th>Why it matters</th><th>What to do</th></tr></thead>
+    <tbody>{{range .TopRisks}}<tr><td><span class="badge {{sevClass .Severity}}">{{upper .Severity}}</span></td><td class="prose"><strong>{{.Title}}</strong></td><td class="num">{{.Assets}}</td><td class="prose small">{{.Risk}}</td><td class="prose small">{{.Fix}}</td></tr>{{end}}</tbody>
+  </table></div>
+  {{end}}
+  {{if .Actions}}<h3>Priority actions</h3><ol class="steps">{{range .Actions}}<li>{{.}}</li>{{end}}</ol>{{end}}
+  <p class="muted small">Score: 100 minus 12 per high-severity finding (up to 6), 4 per medium (up to 10) and 1 per low (up to 10). Good = nothing high or medium; Fair = medium findings or one high; Poor = two or more high. {{if $.R.AckedFindings}}{{$.R.AckedFindings}} accepted risk(s) are not counted.{{end}}</p>
+</section>
+{{end}}
+
+<h2 class="sectionhead">Detail for the security team{{if .R.Filter.Sev}} <span class="badge muted">{{.R.Filter.Label}}</span>{{end}}</h2>
+
+<section class="card" id="domains">
+  <h2>Domains</h2>
   <div class="scroll"><table>
     <thead><tr><th>Domain</th><th>Status</th><th class="num">Hosts</th><th class="num">New hosts</th><th class="num">High</th><th class="num">Medium</th><th class="num">Low</th><th>Last scan</th></tr></thead>
     <tbody>{{range .R.Targets}}<tr><td><a href="/targets/{{.ID}}">{{.Domain}}</a></td>
@@ -33,20 +74,67 @@
   </table></div>
 </section>
 
-<section class="card">
+<section class="card" id="open">
   <h2>Open findings ({{len .R.Findings}})</h2>
   {{if .R.Findings}}
   <div class="scroll"><table>
-    <thead><tr><th>Severity</th><th>Finding</th><th>Source of evidence</th><th>Risk</th><th>Recommended fix</th><th>First seen</th></tr></thead>
+    <thead><tr><th>Severity</th><th>Finding</th><th>Asset</th><th>Detail</th><th>First seen</th></tr></thead>
     <tbody>{{range .R.Findings}}{{$i := finfo .}}<tr><td><span class="badge {{sevClass .Severity}}">{{upper .Severity}}</span></td>
-      <td class="prose"><strong>{{$i.Title}}</strong><div class="mono">{{.Host}}</div><div class="small muted">{{.Root}}</div><div class="small">{{.Detail}}</div></td>
-      <td class="prose small">{{$i.Source}}</td><td class="prose small">{{$i.Risk}}</td><td class="prose small">{{$i.Solution}}</td><td>{{ts .FirstSeen}}</td></tr>{{end}}</tbody>
+      <td class="prose"><strong>{{$i.Title}}</strong></td><td class="mono">{{.Host}}<div class="small muted">{{.Root}}</div></td><td class="prose small">{{.Detail}}</td><td>{{ts .FirstSeen}}</td></tr>{{end}}</tbody>
   </table></div>
-  {{else}}<p class="muted">Nothing needs attention.</p>{{end}}
-  {{if .R.AckedFindings}}<p class="muted small">{{.R.AckedFindings}} acknowledged finding(s) are not listed.</p>{{end}}
+  <p class="muted small">Risk and fix for each finding type are in <a href="#byfinding">By finding</a>.</p>
+  {{else}}<p class="muted">Nothing to show{{if .R.Filter.Sev}} for this severity selection{{end}}.</p>{{end}}
 </section>
 
-<section class="card">
+<section class="card" id="new">
+  <h2>New findings in the last {{.Days}} day(s) ({{len .R.NewFindings}})</h2>
+  {{if .R.NewFindings}}
+  <div class="scroll"><table>
+    <thead><tr><th>Severity</th><th>Finding</th><th>Asset</th><th>First seen</th><th>Now</th></tr></thead>
+    <tbody>{{range .R.NewFindings}}{{$i := finfo .}}<tr><td><span class="badge {{sevClass .Severity}}">{{upper .Severity}}</span></td><td class="prose"><strong>{{$i.Title}}</strong><div class="small">{{.Detail}}</div></td>
+      <td class="mono">{{.Host}}</td><td>{{ts .FirstSeen}}</td><td>{{if eq .Status "open"}}open{{else if eq .Status "ack"}}accepted{{else}}fixed already{{end}}</td></tr>{{end}}</tbody>
+  </table></div>
+  {{else}}<p class="muted">No new findings in this period.</p>{{end}}
+</section>
+
+<section class="card" id="resolved">
+  <h2>Resolved findings in the last {{.Days}} day(s) ({{len .R.ResolvedFindings}})</h2>
+  {{if .R.ResolvedFindings}}
+  <div class="scroll"><table>
+    <thead><tr><th>Severity</th><th>Finding</th><th>Asset</th><th>First seen</th><th>Fixed</th></tr></thead>
+    <tbody>{{range .R.ResolvedFindings}}{{$i := finfo .}}<tr><td><span class="badge {{sevClass .Severity}}">{{upper .Severity}}</span></td><td class="prose"><strong>{{$i.Title}}</strong><div class="small">{{.Detail}}</div></td>
+      <td class="mono">{{.Host}}</td><td>{{ts .FirstSeen}}</td><td>{{ts .LastSeen}}</td></tr>{{end}}</tbody>
+  </table></div>
+  {{else}}<p class="muted">Nothing was resolved in this period.</p>{{end}}
+</section>
+
+<section class="card" id="byfinding">
+  <h2>Grouped by finding ({{len .R.ByFinding}} type(s))</h2>
+  {{range .R.ByFinding}}
+  <details class="group" {{if eq .Severity "high"}}open{{end}}>
+    <summary><span class="badge {{sevClass .Severity}}">{{upper .Severity}}</span> <strong>{{.Title}}</strong> <span class="muted small">{{.Assets}} asset(s) · {{len .Items}} finding(s)</span></summary>
+    <div class="grid inner">
+      <div><h4>Source of evidence</h4><p class="small">{{.Info.Source}}</p><h4>Risk</h4><p class="small">{{.Info.Risk}}</p></div>
+      <div><h4>Recommended fix</h4><p class="small">{{.Info.Solution}}</p></div>
+    </div>
+    <table><thead><tr><th>Severity</th><th>Asset</th><th>Detail</th></tr></thead>
+      <tbody>{{range .Items}}<tr><td><span class="badge {{sevClass .Severity}}">{{upper .Severity}}</span></td><td class="mono">{{.Host}}</td><td class="prose small">{{.Detail}}</td></tr>{{end}}</tbody></table>
+  </details>
+  {{else}}<p class="muted">Nothing to show.</p>{{end}}
+</section>
+
+<section class="card" id="byasset">
+  <h2>Grouped by asset ({{len .R.ByAsset}})</h2>
+  {{range .R.ByAsset}}
+  <details class="group">
+    <summary><span class="badge {{sevClass .Max}}">{{upper .Max}}</span> <strong class="mono">{{.Host}}</strong> <span class="muted small">{{len .Findings}} finding(s)</span></summary>
+    <table><thead><tr><th>Severity</th><th>Finding</th><th>Detail</th></tr></thead>
+      <tbody>{{range .Findings}}{{$i := finfo .}}<tr><td><span class="badge {{sevClass .Severity}}">{{upper .Severity}}</span></td><td class="prose">{{$i.Title}}</td><td class="prose small">{{.Detail}}</td></tr>{{end}}</tbody></table>
+  </details>
+  {{else}}<p class="muted">Nothing to show.</p>{{end}}
+</section>
+
+<section class="card" id="changes">
   <h2>Changes in the last {{.Days}} day(s) ({{len .R.Changes}})</h2>
   {{if .R.ChangeCounts}}<p>{{range .R.ChangeCounts}}<span class="badge muted">{{.Kind}} {{.Count}}</span> {{end}}</p>{{end}}
   {{if .R.Changes}}
@@ -57,7 +145,7 @@
   {{else}}<p class="muted">No changes were detected in this period.</p>{{end}}
 </section>
 
-<section class="card">
+<section class="card" id="inventory">
   <h2>Host inventory ({{.R.InventoryTotal}}{{if gt .R.InventoryTotal 300}}, first 300 shown; export the CSV for all{{end}})</h2>
   {{if .R.Inventory}}
   <div class="scroll"><table>

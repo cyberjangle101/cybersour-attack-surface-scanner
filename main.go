@@ -70,6 +70,12 @@ func (p *program) Start(service.Service) error {
 		return fail(fmt.Errorf("securing stored credentials: %w", err))
 	}
 	log.Info("data location", "dir", p.boot.DataDir, "database", p.boot.DBPath())
+	if p.boot.LegacyDataDir {
+		log.Warn("the database and key are stored next to the program (older layout). Move them to the dedicated data folder with:  easm-agent -migrate-data  (stop the agent first)")
+	}
+	if p.boot.DataDirWarning != "" {
+		log.Warn("could not restrict access to the data folder; set its permissions by hand", "err", p.boot.DataDirWarning)
+	}
 
 	// An address chosen in the web interface is used unless the command line or config file fixed one.
 	if !p.boot.ListenExplicit {
@@ -93,6 +99,10 @@ func (p *program) Start(service.Service) error {
 			_ = store.Close()
 			return fail(fmt.Errorf("TLS certificate: %w", err))
 		}
+	}
+	if p.keeper != nil {
+		p.keeper.attachVault(vault) // lets an administrator-uploaded certificate be loaded and its key sealed
+		web.certs = p.keeper
 	}
 	ln, err := net.Listen("tcp", p.boot.Listen) // fail fast if the port is taken
 	if err != nil {
@@ -329,13 +339,16 @@ func main() {
 	var (
 		cfgPath   = flag.String("config", "", "optional bootstrap config file (listen address, data directory, TLS, logging)")
 		listen    = flag.String("listen", "", "address for the web interface (default 127.0.0.1:8080)")
-		dataDir   = flag.String("data-dir", "", "where to keep the database, key and log (default: next to the program)")
+		dataDir   = flag.String("data-dir", "", "where to keep the database, key and log (default: %LocalAppData%\\EASM Agent on Windows, ~/.local/share/easm-agent or /var/lib/easm-agent on Linux)")
 		svcAction = flag.String("service", "", "service control: install|uninstall|start|stop|restart|status")
 		protectK  = flag.Bool("protect-key", false, "protect easm.key with a passphrase (asked for at start-up or read from EASM_KEY_PASSPHRASE), then exit")
 		unprotect = flag.Bool("unprotect-key", false, "remove the passphrase protection from easm.key, then exit")
 		resetPW   = flag.String("reset-password", "", "set a new password for the named user, then exit")
 		noPass    = flag.Bool("no-passphrase", false, "first start only: create the encryption key without a passphrase (not recommended)")
 		plainHTTP = flag.Bool("plain-http", false, "serve unencrypted HTTP instead of HTTPS with an automatic self-signed certificate")
+		restore   = flag.String("restore", "", "restore a backup .zip into the data folder (stop the agent first), then exit")
+		force     = flag.Bool("force", false, "with -restore: replace an existing database (the old one is kept alongside)")
+		migrate   = flag.Bool("migrate-data", false, "move an installation that lives next to the program into the default data folder, then exit")
 		showVer   = flag.Bool("version", false, "print version and exit")
 	)
 	flag.Parse()
@@ -363,10 +376,22 @@ func main() {
 	if *plainHTTP {
 		boot.PlainHTTP = true
 	}
+	if *migrate {
+		if err := migrateCommand(); err != nil {
+			fatal(err)
+		}
+		return
+	}
 	if err := boot.Finalize(); err != nil {
 		fatal(err)
 	}
 
+	if *restore != "" {
+		if err := restoreCommand(boot, *restore, *force); err != nil {
+			fatal(err)
+		}
+		return
+	}
 	if *protectK || *unprotect {
 		if err := keyProtection(boot, *protectK); err != nil {
 			fatal(err)
@@ -416,4 +441,41 @@ func main() {
 			fmt.Printf("Start it with:  %s -service start\nThen open %s://%s in a browser.\n", os.Args[0], map[bool]string{true: "https", false: "http"}[boot.UsesTLS()], displayAddr(boot.Listen))
 		}
 	}
+}
+
+// migrateCommand implements -migrate-data.
+func migrateCommand() error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	dst, _, err := platformDataDirNow()
+	if err != nil {
+		return err
+	}
+	moved, err := migrateLegacyData(filepath.Dir(exe), dst)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Moved %d file(s) to %s:\n  %s\nStart the agent normally; it will now use that folder.\n", len(moved), dst, strings.Join(moved, "\n  "))
+	return nil
+}
+
+// restoreCommand implements -restore.
+func restoreCommand(boot *Bootstrap, zipPath string, force bool) error {
+	done, err := RestoreBackup(zipPath, boot.DataDir, force, time.Now())
+	for _, d := range done {
+		fmt.Println(" -", d)
+	}
+	if err != nil {
+		return err
+	}
+	fmt.Println("Verifying the restored database with the key file...")
+	if verr := VerifyRestored(boot.DataDir, nil); verr != nil {
+		fmt.Println("Restored, but it could not be verified yet:", verr)
+		fmt.Println("If easm.key is missing or belongs to another installation, put the right key file in", boot.DataDir, "and start the agent.")
+		return nil
+	}
+	fmt.Println("Restore complete and verified. Start the agent as usual.")
+	return nil
 }

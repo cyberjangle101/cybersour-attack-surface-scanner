@@ -107,7 +107,7 @@ var schemaStmts = []string{
 
 var findingKinds = map[string]bool{"tls-expired": true, "tls-expiring": true, "tls-hostname": true, "tls-untrusted": true, "tls-legacy": true,
 	"default-page": true, "exposed-path": true, "no-https-redirect": true, "bucket-public": true, "bucket-takeover": true, "dangling-cname": true, "asn-unexpected": true, "private-ip": true, "email-auth": true,
-	"lookalike-domain": true, "leaked-credentials": true, "repo-exposure": true,
+	"lookalike-domain": true, "leaked-credentials": true, "repo-exposure": true, "cloud-datastore": true,
 	"exposed-service": true, "known-vuln": true, "ip-flagged": true, "eol-software": true, "domain-expiry": true}
 
 func nowUTC() string { return time.Now().UTC().Format(time.RFC3339) }
@@ -432,33 +432,61 @@ func (s *Store) DeleteTarget(id int64) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	// Everything keyed by the root domain. Screenshots and web services are keyed by host,
+	// so they are removed before the rows that name those hosts.
 	for _, q := range []string{
+		`DELETE FROM web_shots WHERE host IN (SELECT host FROM web_services WHERE root=?)`,
+		`DELETE FROM web_services WHERE root=?`,
 		`DELETE FROM subdomains WHERE root=?`, `DELETE FROM records WHERE root=?`, `DELETE FROM certs WHERE root=?`,
 		`DELETE FROM findings WHERE root=?`, `DELETE FROM events WHERE root=?`, `DELETE FROM scans WHERE root=?`,
+		`DELETE FROM suggestions WHERE root=?`, `DELETE FROM domain_info WHERE root=?`,
 	} {
 		if _, err := tx.Exec(q, t.Domain); err != nil {
 			return err
 		}
 	}
-	if _, err := tx.Exec(`DELETE FROM domain_info WHERE root=?`, t.Domain); err != nil {
-		return err
-	}
 	// Intelligence is keyed by IP and may be shared; drop it only when no remaining record uses the address.
 	for _, q := range []string{
 		`DELETE FROM services WHERE ip NOT IN (SELECT value FROM records WHERE rtype IN ('A','AAAA'))`,
 		`DELETE FROM intel WHERE ip NOT IN (SELECT value FROM records WHERE rtype IN ('A','AAAA'))`,
+		`DELETE FROM rdns WHERE ip NOT IN (SELECT value FROM records WHERE rtype IN ('A','AAAA'))`,
 	} {
 		if _, err := tx.Exec(q); err != nil {
 			return err
 		}
 	}
-	if _, err := tx.Exec(`DELETE FROM meta WHERE k=?`, "baselined:"+t.Domain); err != nil {
+	if _, err := tx.Exec(`DELETE FROM meta WHERE k=? OR k LIKE ?`, "baselined:"+t.Domain, "%:"+t.Domain); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`DELETE FROM targets WHERE id=?`, id); err != nil {
 		return err
 	}
 	return tx.Commit()
+}
+
+// TargetDataCounts says how much stored data belongs to a domain, for the delete confirmation.
+type TargetDataCounts struct{ Hosts, Records, Certs, Findings, Events, Scans, Screenshots int }
+
+// CountTargetData counts what DeleteTarget would remove.
+func (s *Store) CountTargetData(domain string) (TargetDataCounts, error) {
+	var c TargetDataCounts
+	for _, q := range []struct {
+		dst *int
+		sql string
+	}{
+		{&c.Hosts, `SELECT COUNT(*) FROM subdomains WHERE root=?`},
+		{&c.Records, `SELECT COUNT(*) FROM records WHERE root=?`},
+		{&c.Certs, `SELECT COUNT(*) FROM certs WHERE root=?`},
+		{&c.Findings, `SELECT COUNT(*) FROM findings WHERE root=?`},
+		{&c.Events, `SELECT COUNT(*) FROM events WHERE root=?`},
+		{&c.Scans, `SELECT COUNT(*) FROM scans WHERE root=?`},
+		{&c.Screenshots, `SELECT COUNT(*) FROM web_shots WHERE host IN (SELECT host FROM web_services WHERE root=?)`},
+	} {
+		if err := s.db.QueryRow(q.sql, domain).Scan(q.dst); err != nil {
+			return c, err
+		}
+	}
+	return c, nil
 }
 
 // SetTargetEnabled pauses or resumes a target.
@@ -1369,6 +1397,12 @@ func (t *Tx) AddEvent(e Event, silent bool) error {
 	}
 	_, err := t.tx.Exec(`INSERT INTO events(ts,root,kind,severity,host,detail,notified,baseline,muted) VALUES(?,?,?,?,?,?,?,?,?)`,
 		e.TS, e.Root, e.Kind, e.Severity, e.Host, e.Detail, n, base, muted)
+	return err
+}
+
+// SetMeta stores a key/value pair inside the transaction.
+func (t *Tx) SetMeta(k, v string) error {
+	_, err := t.tx.Exec(`INSERT OR REPLACE INTO meta(k,v) VALUES(?,?)`, k, v)
 	return err
 }
 

@@ -2,11 +2,25 @@
 <h1>Overview</h1>
 {{if .SMTPOff}}{{if .IsAdmin}}<div class="flash warn">Email alerts are not set up yet, so findings will only appear here and in the log. <a href="/settings#smtp">Configure email</a></div>{{end}}{{end}}
 
+{{if .ShowGuide}}
+<section class="card guide" id="guide">
+  <div class="head"><h2>Welcome: how this works</h2>
+    <form method="post" action="/guide/dismiss" class="inline"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="btn small" type="submit">Hide this</button></form></div>
+  <p>EASM Agent shows your organisation as an outsider sees it and tells you when something <strong>changes</strong>: new sub-domains and servers, take-over risks, expiring certificates, weak email protection, exposed services.</p>
+  <ol class="steps">
+    <li>{{if .IsAdmin}}Add your main domain below (for example <span class="mono">example.com</span>).{{else}}Ask an administrator to add your main domain.{{end}}</li>
+    <li>The first scan quietly records what exists today; changes after that are reported.</li>
+    <li>Review <a href="/findings">Findings</a>: each one explains the risk and the fix.</li>
+  </ol>
+  <p><a class="btn primary" href="/guide">Read the quick guide</a></p>
+</section>
+{{end}}
+
 <div class="stats">
-  <div class="stat"><div class="n">{{.Stats.Targets}}</div><div class="l">Monitored domains</div></div>
-  <div class="stat"><div class="n">{{.Stats.Hosts}}</div><div class="l">Hosts tracked</div></div>
-  <div class="stat {{if .Stats.HighFindings}}bad{{else if .Stats.OpenFindings}}warn{{end}}"><div class="n">{{.Stats.OpenFindings}}</div><div class="l">Open findings{{if .Stats.HighFindings}} ({{.Stats.HighFindings}} high){{end}}</div></div>
-  <div class="stat"><div class="n">{{.Stats.Events24h}}</div><div class="l">Changes in 24h</div></div>
+  <a class="stat" href="/targets"><div class="n">{{.Stats.Targets}}</div><div class="l">Monitored domains</div></a>
+  <a class="stat" href="/assets"><div class="n">{{.Stats.Hosts}}</div><div class="l">Hosts tracked</div></a>
+  <a class="stat {{if .Stats.HighFindings}}bad{{else if .Stats.OpenFindings}}warn{{end}}" href="/findings"><div class="n">{{.Stats.OpenFindings}}</div><div class="l">Open findings{{if .Stats.HighFindings}} ({{.Stats.HighFindings}} high){{end}}</div></a>
+  <a class="stat" href="/events"><div class="n">{{.Stats.Events24h}}</div><div class="l">Changes in 24h</div></a>
 </div>
 
 {{if .IsAdmin}}
@@ -34,35 +48,14 @@
 </section>
 {{end}}
 
-<section class="card">
-  <h2>Monitored domains</h2>
-  {{if .Rows}}
-  <div class="scroll"><table>
-    <thead><tr><th>Domain</th><th>Status</th><th class="num">Hosts</th><th>Findings</th><th>Last scan</th><th>Next scan</th><th></th></tr></thead>
-    <tbody>
-    {{range .Rows}}
-    <tr>
-      <td><a href="/targets/{{.T.ID}}"><strong>{{.T.Domain}}</strong></a>{{if .T.Notes}}<div class="muted small">{{.T.Notes}}</div>{{end}}</td>
-      <td><span class="badge {{.StateClass}}">{{.State}}</span>{{if and (eq .T.LastStatus "error") .T.LastError}}<div class="muted small">{{.T.LastError}}</div>{{end}}{{if .Prog}}{{template "progress" .Prog}}{{else if eq .State "Queued"}}<div class="muted small">Waiting for a free scan slot…</div>{{end}}</td>
-      <td class="num">{{.Hosts}}</td>
-      <td>{{if .FindingTotal}}<a href="/findings?target={{.T.Domain | urlquery}}"><span class="badge {{sevClass .MaxSev}}">{{.FindingTotal}} open</span></a>{{else}}<span class="muted">none</span>{{end}}</td>
-      <td title="{{ts .T.LastEnd}}">{{if .T.LastEnd}}{{ago .T.LastEnd}}{{else}}—{{end}}</td>
-      <td>{{if .T.Enabled}}{{until .T.NextScan}}{{else}}—{{end}}</td>
-      <td class="actions">
-        {{if $.CanTriage}}{{if .T.Enabled}}
-        <form method="post" action="/targets/{{.T.ID}}/scan" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn small" type="submit">Scan now</button></form>
-        {{end}}{{end}}
-      </td>
-    </tr>
-    {{end}}
-    </tbody>
-  </table></div>
-  {{else}}<p class="muted">Nothing is being monitored yet.{{if .IsAdmin}} Add your first domain above.{{end}}</p>{{end}}
+<section class="card" id="domains">
+  <h2><a class="hlink" href="/targets">Monitored domains</a></h2>
+  {{template "targetsTable" .}}
 </section>
 
 {{if .Scans}}
 <section class="card">
-  <h2>Recent scans</h2>
+  <h2><a class="hlink" href="/events">Recent scans</a></h2>
   <div class="scroll"><table>
     <thead><tr><th>Finished</th><th>Domain</th><th>Result</th><th class="num">Hosts</th><th class="num">New hosts</th><th class="num">New records</th><th class="num">New findings</th></tr></thead>
     <tbody>{{range .Scans}}<tr>

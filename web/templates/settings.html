@@ -186,6 +186,74 @@
   <h2>Directory sign-in</h2>
   <p class="muted">Let people sign in with their Active Directory account, by group or one by one. <a href="/settings/ad">Set up Active Directory</a></p>
 </section>
+<section class="card" id="backup">
+  <h2>Backup</h2>
+  {{with .Backup}}
+  <p class="muted">A backup is one file holding a consistent copy of everything the agent stores: domains, settings, users, alert channels, findings and history. It stays <strong>encrypted</strong>. It can only be opened with <span class="mono">easm.key</span>, so keep that file (and its passphrase) somewhere separate and safe. Data folder in use: <span class="mono">{{.DataDir}}</span></p>
+  <h3>Download now</h3>
+  <form method="post" action="/settings/backup/download" class="settings">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <label class="check"><input type="checkbox" name="include_key" value="1" {{if not .KeyProtected}}disabled{{end}}> Include the key file{{if not .KeyProtected}} <span class="muted small">(unavailable: the key file has no passphrase)</span>{{else}} <span class="muted small">(it stays locked by your passphrase)</span>{{end}}</label>
+    <div class="actions"><button class="btn primary" type="submit" data-busy="Preparing backup…">Download a backup</button></div>
+  </form>
+  <h3>Scheduled backups</h3>
+  <form method="post" action="/settings/backup" class="settings">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <div class="grid">
+      <label class="check"><input type="checkbox" name="enabled" value="1" {{if .Cfg.Enabled}}checked{{end}}> Back up automatically</label>
+      <label>Folder <input name="dir" value="{{.Cfg.Dir}}" autocomplete="off" spellcheck="false"><span class="hint">A full path. Use a different disk or a network share, not the data folder, so one failure cannot take out both.</span></label>
+      <label>Every (hours) <input name="every_hours" inputmode="numeric" value="{{.Cfg.EveryHours}}"></label>
+      <label>Keep the newest <input name="keep" inputmode="numeric" value="{{.Cfg.Keep}}"><span class="hint">Older backups with the agent's file name are deleted. Nothing else in the folder is touched.</span></label>
+      <label class="check"><input type="checkbox" name="include_key" value="1" {{if .Cfg.IncludeKey}}checked{{end}} {{if not .KeyProtected}}disabled{{end}}> Include the (passphrase-locked) key file</label>
+    </div>
+    <div class="actions"><button class="btn" type="submit">Save backup settings</button>
+      <button class="btn" type="submit" formaction="/settings/backup/now" data-busy="Writing backup…">Back up to the folder now</button></div>
+  </form>
+  {{if .Cfg.LastResult}}<p class="small {{if hasPrefix .Cfg.LastResult "failed"}}flash bad{{else}}muted{{end}}">Last result: {{.Cfg.LastResult}}</p>{{end}}
+  {{if .Files}}<div class="scroll"><table><thead><tr><th>Backup file</th><th class="num">Size</th><th>Written</th></tr></thead>
+    <tbody>{{range .Files}}<tr><td class="mono small">{{.Name}}</td><td class="num">{{.Size}} bytes</td><td>{{.Created.Format "2006-01-02 15:04"}}</td></tr>{{end}}</tbody></table></div>{{end}}
+  <h3>Restoring</h3>
+  <p class="muted small">Restoring replaces everything, so it is done with the agent stopped: <span class="mono">easm-agent -restore backup.zip</span> (add <span class="mono">-force</span> to replace an existing database; the old one is kept alongside). If the backup does not hold the key file, put your saved <span class="mono">easm.key</span> into the data folder first.</p>
+  {{else}}<p class="muted">Not available in this mode.</p>{{end}}
+</section>
+
+<section class="card" id="certificate">
+  <h2>Web server certificate</h2>
+  {{with .Cert}}
+  {{if .Off}}<p class="muted">The web interface is served over plain HTTP, so there is no certificate. Start the agent without <code>-plain-http</code> to use HTTPS.</p>
+  {{else if .ByFile}}<p class="muted">The certificate comes from the config file (<span class="mono">{{.File}}</span>). Replace the files and restart, or remove <code>tls_cert</code> / <code>tls_key</code> from the config to manage it here.</p>
+  {{else}}
+  {{with .Info}}
+  <table class="kv">
+    <tr><th>In use</th><td><span class="badge {{if eq .Source "uploaded"}}good{{else}}warn{{end}}">{{if eq .Source "uploaded"}}Uploaded certificate{{else}}Self-signed (browsers warn){{end}}</span></td></tr>
+    <tr><th>Issued to</th><td class="mono small">{{.Subject}}</td></tr>
+    <tr><th>Issued by</th><td class="mono small">{{.Issuer}}</td></tr>
+    <tr><th>Valid</th><td>{{.NotBefore.Format "2006-01-02"}} to {{.NotAfter.Format "2006-01-02"}} <span class="muted small">({{.DaysLeft}} days left)</span></td></tr>
+    <tr><th>Covers</th><td class="mono small">{{join .Names ", "}}</td></tr>
+    <tr><th>SHA-256</th><td class="mono small">{{.Fingerprint}}</td></tr>
+  </table>
+  {{range .Missing}}<div class="flash warn">{{if eq .  "the uploaded certificate has expired or is not valid yet"}}{{.}}. The self-signed certificate is being used until a valid one is uploaded.{{else}}Not covered by this certificate: {{.}}{{end}}</div>{{end}}
+  {{end}}
+  <h3>Install a certificate from a certificate authority</h3>
+  <p class="muted small">Paste the PEM text, or choose the files. Include the intermediate certificates your CA sent (the full chain). The private key is stored encrypted with the agent's master key and never leaves this computer. The change applies to new connections at once.</p>
+  <form method="post" action="/settings/certificate" class="settings">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <label>Certificate chain (PEM)
+      <textarea id="cert_pem" name="cert_pem" rows="6" class="mono small" spellcheck="false" placeholder="-----BEGIN CERTIFICATE-----"></textarea>
+      <input type="file" data-fill="cert_pem" accept=".pem,.crt,.cer,.txt" aria-label="Choose the certificate file">
+    </label>
+    <label>Private key (PEM, without a password)
+      <textarea id="key_pem" name="key_pem" rows="4" class="mono small" spellcheck="false" autocomplete="off" placeholder="-----BEGIN PRIVATE KEY-----"></textarea>
+      <input type="file" data-fill="key_pem" accept=".pem,.key,.txt" aria-label="Choose the private key file">
+      <span class="hint">If the key is in the same file as the certificate, leave this empty. For a .pfx / .p12 file, convert it first: <code>openssl pkcs12 -in site.pfx -nodes -out site.pem</code></span>
+    </label>
+    <div class="actions"><button class="btn primary" type="submit" data-confirm="Install this certificate for the web interface?">Install certificate</button>
+    {{if eq .Info.Source "uploaded"}}<button class="btn" type="submit" formaction="/settings/certificate/remove" formnovalidate data-confirm="Go back to the self-signed certificate?">Remove uploaded certificate</button>{{end}}</div>
+  </form>
+  {{end}}
+  {{end}}
+</section>
+
 <section class="card">
   <h2>Web interface address</h2>
   {{with .Listen}}

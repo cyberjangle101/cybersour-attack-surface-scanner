@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -37,8 +38,10 @@ type Engine struct {
 	wg        sync.WaitGroup
 	alertMu   sync.Mutex // one alert flush at a time so batches never duplicate
 
-	progress *ProgressBoard
-	dataDir  string // shown on the Health page so it is obvious where the database and key live
+	progress  *ProgressBoard
+	backing   atomic.Bool // a scheduled backup is being written
+	lastBkTry time.Time
+	dataDir   string // shown on the Health page so it is obvious where the database and key live
 }
 
 // NewEngine creates the scheduler, restoring persisted connector health.
@@ -316,6 +319,7 @@ func (e *Engine) housekeeping(ctx context.Context) {
 	}
 	e.expireAcceptances()
 	e.maybeDigest(ctx)
+	e.maybeBackup()
 }
 
 // auditRetentionDays is how long audit entries are kept (two years).

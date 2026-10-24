@@ -1,0 +1,22 @@
+{{define "content"}}
+<h1>Delete {{.T.Domain}}?</h1>
+<section class="card">
+  <p>This stops monitoring <strong>{{.T.Domain}}</strong> and <strong>permanently deletes</strong> everything stored about it. It cannot be undone.</p>
+  <table class="kv">
+    <tr><th>Hosts</th><td>{{.C.Hosts}}</td></tr>
+    <tr><th>DNS records</th><td>{{.C.Records}}</td></tr>
+    <tr><th>Certificates</th><td>{{.C.Certs}}</td></tr>
+    <tr><th>Findings (open and resolved)</th><td>{{.C.Findings}}</td></tr>
+    <tr><th>Change events</th><td>{{.C.Events}}</td></tr>
+    <tr><th>Scan history entries</th><td>{{.C.Scans}}</td></tr>
+    <tr><th>Screenshots</th><td>{{.C.Screenshots}}</td></tr>
+  </table>
+  <p class="muted small">The audit log keeps a record that the domain was deleted, and by whom. Exposure data for addresses that other domains also use is kept.</p>
+  {{if eq .T.LastStatus "running"}}<div class="flash warn">A scan is running for this domain. Wait for it to finish, then delete.</div>{{else}}
+  <form method="post" action="/targets/{{.T.ID}}/delete" class="grid">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label class="wide">Type <strong>{{.T.Domain}}</strong> to confirm <input name="confirm" autocomplete="off" spellcheck="false" required></label>
+    <div class="wide"><button class="btn danger" type="submit">Delete permanently</button> <a class="btn" href="/targets">Cancel</a></div>
+  </form>{{end}}
+</section>
+{{end}}

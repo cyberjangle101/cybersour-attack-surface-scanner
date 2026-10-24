@@ -266,6 +266,10 @@ func (s *Scanner) scanTarget(ctx context.Context, t *Target) error {
 		return ctx.Err()
 	}
 
+	// 4e. Cloud / SaaS inventory, from the DNS answers already collected (no extra traffic)
+	cloud := detectCloud(root, hosts, results)
+	prevCloud := loadCloudInventory(s.store, root)
+
 	// 5. Persist + diff atomically
 	s.prog("Saving results", 92, "comparing with previous scan")
 	tx, err := s.store.Begin()
@@ -436,6 +440,8 @@ func (s *Scanner) scanTarget(ctx context.Context, t *Target) error {
 			}
 		}
 	}
+
+	check(s.applyCloud(tx, root, cloud, prevCloud, emit, raise))
 
 	check(s.applyIntel(tx, t, intel, asns, now, emit, raise, seen))
 	check(s.applyActive(tx, root, act, now, emit, raise))

@@ -80,6 +80,7 @@ type Server struct {
 	hmu      sync.RWMutex
 	hosts    map[string]bool // allowed Host headers (loopback binds); nil = no check
 	listen   ListenControl   // changes the listen address at run time (nil in tests)
+	certs    CertControl     // shows and replaces the web server certificate (nil when a certificate is configured by file, and in tests)
 
 	dummyHash []byte
 }
@@ -102,6 +103,7 @@ func NewServer(store *Store, eng *Engine, log *slog.Logger, boot *Bootstrap) (*S
 		"ts": fmtTS, "ago": agoStr, "until": untilStr,
 		"sevClass":  func(s string) string { return "sev-" + strings.ToLower(s) },
 		"upper":     strings.ToUpper,
+		"hasPrefix": strings.HasPrefix,
 		"finfo":     describeFinding,
 		"roleLabel": roleLabel,
 		"tctx": func(f Finding, csrf, next string) map[string]any {
@@ -127,7 +129,8 @@ func NewServer(store *Store, eng *Engine, log *slog.Logger, boot *Bootstrap) (*S
 			}
 			return template.URL(path + "?" + query) //nolint:gosec // G203: path is a template literal and the query is server-encoded
 		},
-		"hint": Hint,
+		"hint":  Hint,
+		"donut": donutSVG, "legend": legendHTML, "trend": trendSVG, "hbar": hbarSVG, "catBars": categoryBars, "assetBars": assetBars,
 		"tsec": func(t time.Time) string { return t.Local().Format("2006-01-02 15:04:05") },
 		"seq": func(n int) []int {
 			out := make([]int, n)
@@ -138,9 +141,9 @@ func NewServer(store *Store, eng *Engine, log *slog.Logger, boot *Bootstrap) (*S
 		},
 	}
 	s.tpl = map[string]*template.Template{}
-	pages := []string{"login", "setup", "dashboard", "target", "findings", "events", "assets", "asset", "health", "report", "settings", "users", "account", "error", "moved", "audit", "ad", "channels", "login2fa", "twofactor"}
+	pages := []string{"login", "setup", "dashboard", "guide", "targets", "target_delete", "target", "findings", "events", "assets", "asset", "health", "report", "settings", "users", "account", "error", "moved", "audit", "ad", "channels", "login2fa", "twofactor"}
 	for _, p := range pages {
-		t, err := template.New(p).Funcs(funcs).ParseFS(webFS, "web/templates/layout.html", "web/templates/progress.html", "web/templates/triage.html", "web/templates/"+p+".html")
+		t, err := template.New(p).Funcs(funcs).ParseFS(webFS, "web/templates/layout.html", "web/templates/progress.html", "web/templates/triage.html", "web/templates/targetstable.html", "web/templates/"+p+".html")
 		if err != nil {
 			return nil, fmt.Errorf("template %s: %w", p, err)
 		}
@@ -221,7 +224,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /assets/view", s.auth(permView, s.assetDetail))
 	mux.HandleFunc("GET /shots", s.auth(permView, s.shotView))
 	mux.HandleFunc("GET /progress.json", s.auth(permView, s.progressJSON))
+	mux.HandleFunc("GET /guide", s.auth(permView, s.guideView))
+	mux.HandleFunc("POST /guide/dismiss", s.auth(permView, s.guideDismiss))
+	mux.HandleFunc("GET /targets", s.auth(permView, s.targetList))
 	mux.HandleFunc("POST /targets", s.auth(permAdmin, s.targetAdd))
+	mux.HandleFunc("GET /targets/{id}/delete", s.auth(permAdmin, s.targetDeleteConfirm))
 	mux.HandleFunc("GET /targets/{id}", s.auth(permView, s.targetView))
 	mux.HandleFunc("POST /targets/{id}/edit", s.auth(permAdmin, s.targetEdit))
 	mux.HandleFunc("POST /targets/{id}/scan", s.auth(permTriage, s.targetScan))
@@ -245,10 +252,16 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /report/inventory.csv", s.auth(permView, s.reportCSV("inventory")))
 	mux.HandleFunc("GET /report/findings.csv", s.auth(permView, s.reportCSV("findings")))
 	mux.HandleFunc("GET /report.json", s.auth(permView, s.reportJSON))
+	mux.HandleFunc("GET /report.pdf", s.auth(permView, s.reportPDF))
 
 	mux.HandleFunc("GET /settings", s.auth(permAdmin, s.settingsView))
 	mux.HandleFunc("POST /settings", s.auth(permAdmin, s.settingsSave))
 	mux.HandleFunc("POST /settings/listen", s.auth(permAdmin, s.settingsListen))
+	mux.HandleFunc("POST /settings/backup", s.auth(permAdmin, s.backupSave))
+	mux.HandleFunc("POST /settings/backup/now", s.auth(permAdmin, s.backupNow))
+	mux.HandleFunc("POST /settings/backup/download", s.auth(permAdmin, s.backupDownload))
+	mux.HandleFunc("POST /settings/certificate", s.auth(permAdmin, s.certUpload))
+	mux.HandleFunc("POST /settings/certificate/remove", s.auth(permAdmin, s.certRemove))
 	mux.HandleFunc("POST /settings/test-email", s.auth(permAdmin, s.settingsTestEmail))
 	mux.HandleFunc("POST /settings/digest-now", s.auth(permAdmin, s.settingsDigestNow))
 
@@ -724,6 +737,7 @@ type TargetRow struct {
 	State        string
 	StateClass   string
 	Prog         *ScanProgress
+	Subdomain    bool // the monitored name is below a registered domain (e.g. www.example.com)
 }
 
 // targetState turns scan status into a label and style.
@@ -774,9 +788,40 @@ func (s *Server) targetRows() ([]TargetRow, error) {
 		r.MaxSev = maxSeverity(r.Findings)
 		r.State, r.StateClass = targetState(t)
 		r.Prog = s.eng.Progress().Get(t.ID)
+		r.Subdomain = isSubdomainScope(t.Domain)
 		rows = append(rows, r)
 	}
 	return rows, nil
+}
+
+// targetList shows every monitored domain.
+func (s *Server) targetList(w http.ResponseWriter, r *http.Request, sess *Session) {
+	rows, err := s.targetRows()
+	if err != nil {
+		s.serverError(w, r, sess, err)
+		return
+	}
+	refresh := 0
+	for _, t := range rows {
+		if t.State == "Scanning" || t.State == "Queued" {
+			refresh = 15
+		}
+	}
+	s.render(w, r, sess, "targets", http.StatusOK, map[string]any{"Title": "Monitored domains", "Nav": "dashboard", "Rows": rows, "Refresh": refresh})
+}
+
+// targetDeleteConfirm shows what deleting a domain removes and asks for the domain name to be typed.
+func (s *Server) targetDeleteConfirm(w http.ResponseWriter, r *http.Request, sess *Session) {
+	t := s.loadTarget(w, r, sess)
+	if t == nil {
+		return
+	}
+	c, err := s.store.CountTargetData(t.Domain)
+	if err != nil {
+		s.serverError(w, r, sess, err)
+		return
+	}
+	s.render(w, r, sess, "target_delete", http.StatusOK, map[string]any{"Title": "Delete " + t.Domain, "Nav": "dashboard", "T": t, "C": c})
 }
 
 // dashboard renders the home page.
@@ -810,6 +855,7 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request, sess *Session
 	s.render(w, r, sess, "dashboard", http.StatusOK, map[string]any{
 		"Title": "Dashboard", "Nav": "dashboard", "Stats": stats, "Rows": rows, "Scans": scans,
 		"Settings": settings, "SMTPOff": !settings.SMTPEnabled, "Refresh": refresh, "Form": form,
+		"ShowGuide": s.guideWanted(sess),
 	})
 }
 
@@ -841,6 +887,9 @@ func (s *Server) targetAdd(w http.ResponseWriter, r *http.Request, sess *Session
 			s.log.Info("target added", "domain", t.Domain, "by", sess.Username)
 			s.eng.Wake()
 			s.flash(sess, "good", fmt.Sprintf("Now monitoring %s. The first scan (baseline) is starting; no alerts are sent for what already exists.", t.Domain))
+			if adv := s.scopeAdvice(t.Domain); adv != "" {
+				s.flash(sess, "warn", fmt.Sprintf("Now monitoring %s. Note: %s", t.Domain, adv))
+			}
 			http.Redirect(w, r, "/targets/"+strconv.FormatInt(id, 10), http.StatusSeeOther)
 			return
 		}
@@ -848,6 +897,21 @@ func (s *Server) targetAdd(w http.ResponseWriter, r *http.Request, sess *Session
 	s.stashForm(sess, r)
 	s.flash(sess, "bad", err.Error())
 	http.Redirect(w, r, "/#add", http.StatusSeeOther)
+}
+
+// scopeAdvice explains the reduced coverage of a sub-domain target, or returns "" for a normal domain.
+func (s *Server) scopeAdvice(domain string) string {
+	if !isSubdomainScope(domain) {
+		return ""
+	}
+	parent := registeredDomain(domain)
+	existing, _ := s.store.ListTargets()
+	for _, t := range existing {
+		if t.Domain == parent {
+			return fmt.Sprintf("%s is already covered by %s, which is monitored too. Monitoring the sub-domain separately only makes sense if it needs its own schedule, owners or alert rules.", domain, parent)
+		}
+	}
+	return fmt.Sprintf("%s is a sub-domain of %s, so only names below %s are discovered. Other sub-domains, the parent's email records (SPF, DKIM, DMARC) and its look-alike domains are not covered. Add %s as well for full coverage; keep this entry only if %s is all you own.", domain, parent, domain, parent, domain)
 }
 
 // loadTarget reads the {id} path value and fetches the target.
@@ -1028,7 +1092,7 @@ func (s *Server) targetDelete(w http.ResponseWriter, r *http.Request, sess *Sess
 		s.serverError(w, r, sess, err)
 		return
 	}
-	s.audit(sess, r, "target.delete", t.Domain, "")
+	s.audit(sess, r, "target.delete", t.Domain, "all stored data for this domain was removed")
 	s.log.Info("target deleted", "domain", t.Domain, "by", sess.Username)
 	s.flash(sess, "good", "Removed "+t.Domain+" and all of its stored data.")
 	http.Redirect(w, r, "/", http.StatusSeeOther)
@@ -1120,7 +1184,7 @@ func (s *Server) findings(w http.ResponseWriter, r *http.Request, sess *Session)
 }
 
 var eventKinds = []string{"subdomain", "cert", "dns-a", "dns-aaaa", "dns-cname", "dns-ns", "dns-mx", "dns-txt",
-	"dangling-cname", "asn-unexpected", "private-ip", "email-auth", "dns-removed", "host-gone", "service-removed", "finding-resolved", "web-service", "related-domain", "lookalike-domain", "leaked-credentials", "repo-exposure"}
+	"dangling-cname", "asn-unexpected", "private-ip", "email-auth", "dns-removed", "host-gone", "service-removed", "finding-resolved", "web-service", "related-domain", "lookalike-domain", "leaked-credentials", "repo-exposure", "cloud-service"}
 
 // events renders the change log.
 func (s *Server) events(w http.ResponseWriter, r *http.Request, sess *Session) {
@@ -1174,11 +1238,23 @@ func (s *Server) reportParams(r *http.Request) (root string, days int, names []s
 	root = validRoot(names, r.URL.Query().Get("target"))
 	days, _ = strconv.Atoi(r.URL.Query().Get("days"))
 	switch days {
-	case 1, 7, 30, 90:
+	case 1, 7, 30, 90, 365:
 	default:
 		days = 7
 	}
 	return
+}
+
+// reportOpts reads the severity filter from the query string.
+func reportOpts(r *http.Request) ReportOpts { return ParseSeverityFilter(r.URL.Query()["sev"]) }
+
+// reportQuery is the query string that reproduces the current report selection.
+func reportQuery(root string, days int, o ReportOpts) string {
+	q := "target=" + url.QueryEscape(root) + "&days=" + strconv.Itoa(days)
+	if sq := o.Query(); sq != "" {
+		q += "&" + sq
+	}
+	return q
 }
 
 // report renders the report page.
@@ -1188,7 +1264,8 @@ func (s *Server) report(w http.ResponseWriter, r *http.Request, sess *Session) {
 		s.serverError(w, r, sess, err)
 		return
 	}
-	rep, err := BuildReport(s.store, root, time.Now().Add(-time.Duration(days)*24*time.Hour), 300)
+	opts := reportOpts(r)
+	rep, err := BuildReportOpts(s.store, root, time.Now().Add(-time.Duration(days)*24*time.Hour), 300, opts)
 	if err != nil {
 		s.serverError(w, r, sess, err)
 		return
@@ -1196,8 +1273,36 @@ func (s *Server) report(w http.ResponseWriter, r *http.Request, sess *Session) {
 	rep.Days = days
 	s.render(w, r, sess, "report", http.StatusOK, map[string]any{
 		"Title": "Report", "Nav": "report", "R": rep, "Targets": names, "Target": root, "Days": days,
-		"Query": "target=" + url.QueryEscape(root) + "&days=" + strconv.Itoa(days),
+		"Query": reportQuery(root, days, opts),
 	})
+}
+
+// reportPDF sends the report as a PDF file.
+func (s *Server) reportPDF(w http.ResponseWriter, r *http.Request, sess *Session) {
+	root, days, _, err := s.reportParams(r)
+	if err != nil {
+		s.serverError(w, r, sess, err)
+		return
+	}
+	rep, err := BuildReportOpts(s.store, root, time.Now().Add(-time.Duration(days)*24*time.Hour), 200, reportOpts(r))
+	if err != nil {
+		s.serverError(w, r, sess, err)
+		return
+	}
+	rep.Days = days
+	pdf, err := RenderReportPDF(rep, version)
+	if err != nil {
+		s.serverError(w, r, sess, err)
+		return
+	}
+	scope := "all"
+	if root != "" {
+		scope = root
+	}
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition", `attachment; filename="easm-report-`+scope+`-`+time.Now().Format("20060102")+`.pdf"`)
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(pdf) // nosemgrep: no-direct-write-to-responsewriter -- a PDF document generated by the server, not HTML
 }
 
 // reportCSV exports the report as CSV.
@@ -1208,7 +1313,7 @@ func (s *Server) reportCSV(kind string) authed {
 			s.serverError(w, r, sess, err)
 			return
 		}
-		rep, err := BuildReport(s.store, root, time.Now().Add(-time.Duration(days)*24*time.Hour), 200000)
+		rep, err := BuildReportOpts(s.store, root, time.Now().Add(-time.Duration(days)*24*time.Hour), 200000, reportOpts(r))
 		if err != nil {
 			s.serverError(w, r, sess, err)
 			return
@@ -1231,7 +1336,7 @@ func (s *Server) reportJSON(w http.ResponseWriter, r *http.Request, sess *Sessio
 		s.serverError(w, r, sess, err)
 		return
 	}
-	rep, err := BuildReport(s.store, root, time.Now().Add(-time.Duration(days)*24*time.Hour), 200000)
+	rep, err := BuildReportOpts(s.store, root, time.Now().Add(-time.Duration(days)*24*time.Hour), 200000, reportOpts(r))
 	if err != nil {
 		s.serverError(w, r, sess, err)
 		return
@@ -1331,7 +1436,7 @@ func (s *Server) settingsView(w http.ResponseWriter, r *http.Request, sess *Sess
 		"Title": "Settings", "Nav": "settings", "S": st, "HasPassword": s.eng.HasSMTPPassword(),
 		"HasShodan": s.eng.HasSecret(secretShodan), "HasCensys": s.eng.HasSecret(secretCensys), "HasVT": s.eng.HasSecret(secretVT), "HasHIBP": s.eng.HasSecret(secretHIBP), "HasGitHub": s.eng.HasSecret(secretGitHub),
 		"Resolvers": strings.Join(st.DNSResolvers, "\n"), "Recipients": strings.Join(st.SMTPTo, "\n"),
-		"Listen": s.listenView(),
+		"Listen": s.listenView(), "Cert": s.certView(), "Backup": s.backupView(),
 	})
 }
 

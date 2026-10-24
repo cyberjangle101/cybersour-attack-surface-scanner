@@ -89,6 +89,14 @@ var findingCatalog = map[string]FindingInfo{
 		Risk:     "The DNS name still points at a bucket that was deleted. Anyone can create a bucket with that name and serve their own content from your domain.",
 		Solution: "Delete the DNS record, or re-create the bucket in your own account so that no one else can claim it.",
 	},
+	"cloud-datastore": {
+		Title:  "Managed database or cache named in public DNS",
+		Source: "DNS resolvers (a CNAME points at a managed database, cache or search service)",
+		Risk: "A name in public DNS is an alias for a managed database, cache or search cluster (RDS, Azure SQL, MongoDB Atlas, Redis, Elasticsearch and similar). " +
+			"The record does not prove the service is reachable, but it tells attackers exactly where it is, and these services are frequently exposed to the internet by mistake.",
+		Solution: "Confirm the service accepts connections only from your private network (security group, firewall rule or private endpoint) and requires authentication. " +
+			"Prefer internal DNS names for databases; remove the public record if it is not needed.",
+	},
 	"dangling-cname": {
 		Title:  "Dangling CNAME (possible subdomain takeover)",
 		Source: "DNS resolvers (the name has a CNAME record whose target returns NXDOMAIN)",

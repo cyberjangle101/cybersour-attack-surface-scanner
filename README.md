@@ -2,7 +2,7 @@
 
 A lightweight, single-binary agent for continuous **External Attack Surface Management (EASM)**. It runs as a persistent background service on Windows or Linux, watches the internet-facing footprint of the organisations you tell it about, and emails you only when something **changes**.
 
-> **Status:** v1.6.0. See "What's new in 1.6" below.
+> **Status:** v1.7.0. See "What's new in 1.7" below.
 
 ## Why
 
@@ -50,6 +50,26 @@ are emailed only about new subdomains, new IP/DNS records, new certificates and 
 * **Alerts:** HTML + plaintext email (STARTTLS / implicit TLS), plus an optional daily/weekly digest that includes the same source/risk/fix text.
 * **Reports:** per-domain or all-domain report page, CSV exports (inventory, findings, assets) and JSON.
 * **Users:** admin, analyst and read-only viewer roles; local accounts with optional two-factor sign-in, or Active Directory sign-in (see *What's new in 1.6*).
+
+## What's new in 1.7
+
+**Cloud and SaaS sprawl.** Every scan now builds an inventory of the cloud platforms, APIs, SaaS products and mail services your domain uses, read from DNS it already has (no extra traffic): CNAME targets (AWS, Azure, Google Cloud, Cloudflare, Heroku, Netlify, Shopify, Zendesk and more), SPF `include:` entries, MX hosts and domain-verification TXT tokens left behind by SaaS onboarding (Atlassian, Stripe, Slack, DocuSign and others). A service seen for the first time raises a *cloud-service* event (quiet during the baseline scan). A name that points at a managed database, cache or search cluster (RDS, Azure SQL, MongoDB Atlas, Redis, Elastic and similar) raises a medium *cloud-datastore* finding. SPF, DKIM, DMARC, MTA-STS and CAA were already checked. Limits: this finds what DNS reveals; a SaaS tool that never touches your DNS, or a database with no public name, is invisible to it.
+
+**Ownership checks.** On a domain, *Expected ASNs* takes ASN numbers (`AS16509`, `16509`, mixed separators) and *Expected organisation keywords* takes words such as `AMAZON, MICROSOFT` (case-insensitive substring of the network's registered name). An address matching either is fine; one matching neither raises a high *asn-unexpected* finding. Leave both empty to skip the check. Use it to spot forgotten servers, shadow IT in an unapproved cloud, and hijacked records.
+
+**Data folder.** The database, key, certificates and backups now live in a per-user data folder (`%LocalAppData%\EASM Agent` on Windows, `~/.local/share/easm-agent` on Linux, or `-data-dir`), created with restricted permissions. Move an old install with `easm-agent -migrate-data`.
+
+**Backup and restore.** Settings → Backup writes encrypted snapshots (the database is never copied in clear) on a schedule or on demand, keeps the newest N, and offers a download. The encryption key is included only if you tick it; otherwise keep your key file safe separately. Restore offline with `easm-agent -restore <file>`.
+
+**Server certificate upload.** Settings → Web server certificate accepts a CA-signed certificate chain and key (paste or upload PEM); it is validated, applied without a restart, and can be removed to fall back to the self-signed certificate.
+
+**Delete a domain.** The red icon on the Dashboard's domain list removes the domain and all its data after a confirmation page that shows what will go.
+
+**Dashboard tiles are links** to the domains, assets and findings behind each number. A **Quick guide** (menu, and a welcome card on first use) explains what the tool does and how to start.
+
+**Reports.** The report has an executive summary with charts, then new findings, resolved findings, severity filters, findings grouped by asset and by finding name, and full detail for the security team. The PDF mirrors it.
+
+**Sub-domain scope.** You can add `www.example.com`, but the tool warns: only that name and what is below it is covered, and parent-level email records, look-alikes and sibling hosts are missed. Add the registered domain where you can. A sub-domain of an already monitored domain is rejected as an overlap.
 
 ## What's new in 1.6
 

@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"golang.org/x/net/publicsuffix"
 	"os"
 	"regexp"
 	"sort"
@@ -76,4 +77,22 @@ func fileSize(path string) int64 {
 		return fi.Size()
 	}
 	return 0
+}
+
+// registeredDomain returns the registrable domain of name ("www.example.co.uk" -> "example.co.uk"),
+// using the public-suffix list (which also knows hosting suffixes such as github.io). It returns
+// "" when name is itself a public suffix or cannot be classified.
+func registeredDomain(name string) string {
+	d, err := publicsuffix.EffectiveTLDPlusOne(name)
+	if err != nil {
+		return ""
+	}
+	return d
+}
+
+// isSubdomainScope reports whether name sits below a registrable domain, so that monitoring it
+// covers only part of the organisation's namespace.
+func isSubdomainScope(name string) bool {
+	d := registeredDomain(name)
+	return d != "" && d != name
 }

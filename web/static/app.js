@@ -44,3 +44,14 @@ document.addEventListener('submit', function (e) {
   };
   setInterval(tick, 2000);
 })();
+
+// Settings: choose a file to fill a text box (certificate and key upload).
+document.addEventListener('change', function (e) {
+  const inp = e.target;
+  if (!inp || !inp.hasAttribute || !inp.hasAttribute('data-fill') || !inp.files || !inp.files[0]) { return; }
+  const box = document.getElementById(inp.getAttribute('data-fill'));
+  if (!box || inp.files[0].size > 200000) { return; }
+  const rd = new FileReader();
+  rd.onload = function () { box.value = String(rd.result); };
+  rd.readAsText(inp.files[0]);
+});
