@@ -1,0 +1,21 @@
+{{define "content"}}
+<h1>Audit log</h1>
+<p class="muted">Who changed what: sign-ins, risk acceptances, severity changes, user and settings changes. {{.Total}} matching entries.</p>
+<section class="card">
+  <form method="get" class="inline search">
+    <input name="actor" value="{{.Actor}}" placeholder="User" aria-label="User">
+    <input name="action" value="{{.Action}}" placeholder="Action, e.g. finding" aria-label="Action">
+    <select name="days" aria-label="Period"><option value="">All time</option><option value="1"{{if eq .Days "1"}} selected{{end}}>Last day</option><option value="7"{{if eq .Days "7"}} selected{{end}}>Last 7 days</option><option value="30"{{if eq .Days "30"}} selected{{end}}>Last 30 days</option></select>
+    <button class="btn small" type="submit">Filter</button>
+    <a class="btn small" href="/audit.csv?{{.Query}}">Download CSV</a>
+  </form>
+  {{if .Entries}}<div class="scroll"><table>
+    <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Target</th><th>Detail</th><th>From</th></tr></thead>
+    <tbody>{{range .Entries}}<tr><td>{{ts .TS}}</td><td>{{.Actor}}{{if eq .Kind "ad"}} <span class="muted small">AD</span>{{end}}</td><td class="mono small">{{.Action}}</td><td>{{.Target}}</td><td class="prose small">{{.Detail}}</td><td class="mono small">{{.IP}}</td></tr>{{end}}</tbody>
+  </table></div>
+  {{if gt .Pages 1}}<p class="small">Page {{.Page}} of {{.Pages}}
+    {{if gt .Page 1}}<a href="/audit?{{.Query}}&amp;page={{sub .Page 1}}">Previous</a>{{end}}
+    {{if lt .Page .Pages}}<a href="/audit?{{.Query}}&amp;page={{add .Page 1}}">Next</a>{{end}}</p>{{end}}
+  {{else}}<p class="muted">Nothing recorded yet.</p>{{end}}
+</section>
+{{end}}

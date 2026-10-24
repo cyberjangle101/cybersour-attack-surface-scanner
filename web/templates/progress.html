@@ -1,0 +1,4 @@
+{{define "progress"}}{{if .}}<div class="prog" data-prog="{{.ID}}">
+  <progress max="100" value="{{.Percent}}"></progress>
+  <div class="prog-l"><strong data-p="pct">{{.Percent}}%</strong> <span data-p="stage">{{.Stage}}</span><span class="muted small" data-p="detail">{{if .Detail}} · {{.Detail}}{{end}}</span><span class="warn-t small" data-p="stall">{{if gt .IdleSecs 90}} · no progress for {{.IdleSecs}}s (a source is slow; it will time out and continue){{end}}</span></div>
+</div>{{end}}{{end}}

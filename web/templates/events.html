@@ -1,0 +1,30 @@
+{{define "content"}}
+<h1>Events</h1>
+<form method="get" class="filters">
+  <label>Domain <select name="target"><option value="">All</option>{{range .Targets}}<option value="{{.}}" {{if eq . $.F.Root}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+  <label>Type <select name="kind"><option value="">Any</option>{{range .Kinds}}<option value="{{.}}" {{if eq . $.F.Kind}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+  <label>Severity <select name="severity"><option value="">Any</option>
+    <option value="high" {{if eq .F.MinSeverity "high"}}selected{{end}}>High</option>
+    <option value="medium" {{if eq .F.MinSeverity "medium"}}selected{{end}}>Medium and up</option>
+    <option value="low" {{if eq .F.MinSeverity "low"}}selected{{end}}>Low and up</option></select></label>
+  <label class="check"><input type="checkbox" name="baseline" value="1" {{if .F.IncludeBaseline}}checked{{end}}> Include baseline inventory</label>
+  <button class="btn" type="submit">Apply</button>
+</form>
+<section class="card">
+  <p class="muted small">{{.Total}} event(s). Alerts are emailed once; "sent" shows whether that has happened.</p>
+  {{if .Events}}
+  <div class="scroll"><table>
+    <thead><tr><th>When</th><th>Severity</th><th>Domain</th><th>Type</th><th>Host</th><th>Detail</th><th>Email</th></tr></thead>
+    <tbody>{{range .Events}}<tr>
+      <td>{{ts .TS}}</td><td><span class="badge {{sevClass .Severity}}">{{upper .Severity}}</span></td><td>{{.Root}}</td><td>{{.Kind}}</td><td class="mono">{{.Host}}</td><td class="mono small">{{.Detail}}</td>
+      <td>{{if .Baseline}}<span class="muted">baseline</span>{{else if .Notified}}sent{{else}}<span class="badge warn">queued</span>{{end}}</td>
+    </tr>{{end}}</tbody>
+  </table></div>
+  {{if gt .Pages 1}}<nav class="pager">
+    {{if gt .Page 1}}<a class="btn small" href="{{href "/events" .BaseQuery (printf "page=%d" (sub .Page 1))}}">← Newer</a>{{end}}
+    <span class="muted">Page {{.Page}} of {{.Pages}}</span>
+    {{if lt .Page .Pages}}<a class="btn small" href="{{href "/events" .BaseQuery (printf "page=%d" (add .Page 1))}}">Older →</a>{{end}}
+  </nav>{{end}}
+  {{else}}<p class="muted">No events match.</p>{{end}}
+</section>
+{{end}}

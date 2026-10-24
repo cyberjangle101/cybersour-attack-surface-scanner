@@ -1,0 +1,70 @@
+{{define "content"}}
+<div class="head">
+  <div>
+    <h1>System health</h1>
+    <p class="muted">Whether each data source and service the agent depends on is connected. Status comes from real scans and from the check button.</p>
+  </div>
+  {{if .IsAdmin}}<form method="post" action="/health/check" class="inline"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="btn primary" type="submit" data-busy="Checking…">Check connections now</button></form>{{end}}
+</div>
+
+<div class="stats">
+  <div class="stat good"><div class="n">{{index .Counts "good"}}</div><div class="l">Connected</div></div>
+  <div class="stat {{if index .Counts "bad"}}bad{{end}}"><div class="n">{{index .Counts "bad"}}</div><div class="l">Failing</div></div>
+  <div class="stat {{if index .Counts "warn"}}warn{{end}}"><div class="n">{{index .Counts "warn"}}</div><div class="l">Need an API key</div></div>
+  <div class="stat"><div class="n">{{index .Counts "unknown"}}</div><div class="l">Not used yet</div></div>
+</div>
+
+<section class="card">
+  <h2>Agent</h2>
+  <div class="scroll"><table>
+    <tbody>
+      <tr><td>Version</td><td>{{.Sys.Version}}</td><td>Uptime</td><td>{{.Sys.Uptime}}</td></tr>
+      <tr><td>Database</td><td>{{if .Sys.DBOK}}<span class="badge good">Healthy</span> {{.Sys.DBSize}}{{else}}<span class="badge bad">Error</span> {{.Sys.DBError}}{{end}}</td>
+          <td>Monitored domains / hosts</td><td>{{.Sys.Targets}} / {{.Sys.Hosts}}</td></tr>
+      <tr><td>Data folder</td><td colspan="3" class="mono small">{{if .Sys.DataDir}}{{.Sys.DataDir}}{{else}}—{{end}} <span class="muted">(database easm.db, encryption key easm.key — keep both together; starting the program from a different folder creates a new empty database)</span></td></tr>
+      <tr><td>Scheduler</td><td>{{if .Sys.Scanning}}<span class="badge info">Scanning {{.Sys.Scanning}}</span>{{else}}<span class="badge good">Idle</span>{{end}}</td>
+          <td>Next scheduled scan</td><td>{{if .Sys.NextScan}}{{ts .Sys.NextScan}} ({{until .Sys.NextScan}}){{else}}—{{end}}</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+{{range .Groups}}
+<section class="card">
+  <h2>{{.Name}}</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Status</th><th>Connector</th><th>Last success</th><th>Last failure</th><th class="num">Latency</th><th class="num">OK / failed</th></tr></thead>
+    <tbody>{{range .Rows}}<tr>
+      <td><span class="badge {{.State}}">{{.StateLabel}}</span></td>
+      <td><strong>{{.Label}}</strong><div class="small muted">{{.What}}</div><div class="small muted">Check button: {{.Probe}}</div>{{if eq .StateLabel "No API key"}}<div class="small"><a href="/settings#intel">Add the API key in Settings →</a></div>{{end}}<div class="small"><a href="{{href "/health" (printf "connector=%s" (urlquery .ID))}}#log">View connection log</a></div></td>
+      <td>{{if .LastOK}}{{ago .LastOK}}{{else}}<span class="muted">never</span>{{end}}</td>
+      <td>{{if .LastFail}}{{ago .LastFail}}{{if .LastError}}<div class="small mono">{{.LastError}}</div>{{end}}{{else}}<span class="muted">never</span>{{end}}{{if .Note}}<div class="small muted">{{.Note}}</div>{{end}}</td>
+      <td class="num">{{if .Seen}}{{.LatencyMs}} ms{{else}}—{{end}}</td>
+      <td class="num">{{.OK}} / {{.Fail}}</td>
+    </tr>{{end}}</tbody>
+  </table></div>
+</section>
+{{end}}
+<section class="card" id="log">
+  <h2>Connection log</h2>
+  <form method="get" action="/health#log" class="filters">
+    <label>Connector <select name="connector"><option value="">All</option>{{range .LogOpts}}<option value="{{.ID}}" {{if eq .ID $.LogConn}}selected{{end}}>{{.Label}}</option>{{end}}</select></label>
+    <label class="check"><input type="checkbox" name="failed" value="1" {{if .LogFailed}}checked{{end}}> Failures only</label>
+    <button class="btn" type="submit">Filter</button>
+  </form>
+  <p class="muted small">Newest first. Repeats of the same result are collapsed (×N). Successful calls are summarised, failures are always listed with the reason and what to try.</p>
+  {{if .Log}}
+  <div class="scroll"><table>
+    <thead><tr><th>Time</th><th>Connector</th><th>Result</th><th class="num">Latency</th><th>Detail / what to try</th></tr></thead>
+    <tbody>{{range .Log}}<tr>
+      <td>{{tsec .Time}}</td>
+      <td>{{.Label}}<div class="small muted">{{.Via}}</div></td>
+      <td>{{if .OK}}<span class="badge good">OK</span>{{else}}<span class="badge bad">Failed</span>{{end}}{{if gt .Count 1}} <span class="muted small">×{{.Count}}</span>{{end}}</td>
+      <td class="num">{{.LatencyMs}} ms</td>
+      <td class="prose small">{{if .Error}}<div class="mono">{{.Error}}</div>{{if .Hint}}<div>{{.Hint}}</div>{{end}}{{else}}<span class="muted">—</span>{{end}}</td>
+    </tr>{{end}}</tbody>
+  </table></div>
+  {{else}}<p class="muted">Nothing logged yet. Run <em>Check connections now</em> or wait for a scan.</p>{{end}}
+</section>
+
+<p class="muted small">A connector shows <em>Failing</em> when its most recent attempt failed. Free public services are sometimes slow or rate-limited; a single failure is normally retried on the next scan. Services marked “No API key” need a key in Settings.</p>
+{{end}}

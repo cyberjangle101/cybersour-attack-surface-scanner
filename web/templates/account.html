@@ -1,0 +1,46 @@
+{{define "content"}}
+<h1>My account</h1>
+<section class="card narrow">
+  <h2>Change password</h2>
+  <p class="muted">Signed in as <strong>{{.User}}</strong> ({{.RoleLabel}}).</p>
+  {{if .Directory}}<p>Your password is managed in Active Directory, so it cannot be changed here.</p>{{else}}
+  <form method="post" action="/account/password">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>Current password <input type="password" name="current" autocomplete="current-password" required></label>
+    <label>New password <input type="password" name="password" autocomplete="new-password" minlength="10" required></label>
+    <label>Confirm new password <input type="password" name="confirm" autocomplete="new-password" minlength="10" required></label>
+    <button class="btn primary" type="submit">Change password</button>
+  </form>{{end}}
+</section>
+<section class="card">
+  <h2>Two-factor sign-in</h2>
+  {{if .Directory}}<p class="muted">Your sign-in is handled by Active Directory, so two-factor is whatever your directory requires.</p>{{else}}<p class="muted">Adds a code from an authenticator app to your password. <a href="/account/2fa">Manage two-factor sign-in</a></p>{{end}}
+</section>
+<section class="card">
+  <h2>API tokens</h2>
+  <p class="muted">For scripts and tools such as a SIEM or ticketing system. A token acts with your permissions at most, and stops working if your account is disabled. Send it as <span class="mono">Authorization: Bearer &lt;token&gt;</span> to <span class="mono">/api/v1/…</span> (findings, events, assets, targets, report, export/sarif, export/stix, and POST scan). The token is shown only once.</p>
+  {{if .Reveal}}<p class="flash good">Your new token (copy it now; it cannot be shown again):<br><strong class="mono">{{.Reveal}}</strong></p>{{end}}
+  {{if .Tokens}}<div class="scroll"><table>
+    <thead><tr><th>Name</th><th>Starts with</th><th>Role</th><th>Expires</th><th>Last used</th><th></th></tr></thead>
+    <tbody>{{range .Tokens}}<tr><td>{{.Name}}</td><td class="mono">{{.Prefix}}…</td><td>{{roleLabel .Role}}</td><td>{{if .Expires}}{{.Expires}}{{else}}never{{end}}</td><td>{{if .LastUsed}}{{.LastUsed}}{{else}}never{{end}}</td>
+      <td>{{if .Revoked}}revoked{{else}}<form method="post" action="/account/tokens/{{.ID}}/revoke"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn danger" type="submit">Revoke</button></form>{{end}}</td></tr>{{end}}</tbody>
+  </table></div>{{end}}
+  <form method="post" action="/account/tokens" class="settings">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <div class="grid">
+      <label>Name <input name="name" required maxlength="80" placeholder="SIEM export" autocomplete="off"></label>
+      <label>Role <select name="role">{{range .TokenRoles}}<option value="{{.}}">{{roleLabel .}}</option>{{end}}</select></label>
+      <label>Valid for (days, blank = no expiry) <input name="days" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off"></label>
+    </div>
+    <div class="actions"><button class="btn primary" type="submit">Create token</button></div>
+  </form>
+</section>
+{{if .OtherTokens}}<section class="card">
+  <h2>Everyone&rsquo;s tokens</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Owner</th><th>Name</th><th>Starts with</th><th>Role</th><th>Last used</th><th></th></tr></thead>
+    <tbody>{{range .OtherTokens}}<tr><td>{{.Owner}}</td><td>{{.Name}}</td><td class="mono">{{.Prefix}}…</td><td>{{roleLabel .Role}}</td><td>{{if .LastUsed}}{{.LastUsed}}{{else}}never{{end}}</td>
+      <td>{{if .Revoked}}revoked{{else}}<form method="post" action="/account/tokens/{{.ID}}/revoke"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn danger" type="submit">Revoke</button></form>{{end}}</td></tr>{{end}}</tbody>
+  </table></div>
+</section>{{end}}
+{{end}}

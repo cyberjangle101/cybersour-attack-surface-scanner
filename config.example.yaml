@@ -1,0 +1,25 @@
+# OPTIONAL bootstrap file. Everything about WHAT to scan (domains, ASNs, keywords,
+# ignore patterns) and HOW (intervals, SMTP, sources, DNS) is configured in the web
+# interface. This file only covers things needed before the web UI can start.
+# Run with:  easm-agent -config config.yaml
+
+# The listen address can also be changed in the web interface (Settings). A value set here or with -listen takes priority.
+listen: "127.0.0.1:8080"      # 0.0.0.0:8443 is safe to use: traffic is encrypted
+data_dir: ""                  # database, encryption key and log live here (default: next to the program)
+
+# HTTPS is on by default: with no certificate below, the agent makes and renews its own
+# self-signed one (server.crt / server.key in data_dir). Supply your own to avoid the browser warning:
+# tls_cert: /etc/easm/server.crt
+# tls_key:  /etc/easm/server.key
+# plain_http: false           # true = unencrypted HTTP (only sensible on loopback)
+
+# Host names the UI may be reached as when bound to loopback (DNS-rebinding defence).
+# allowed_hosts: ["easm.internal.example"]
+
+no_passphrase: false          # true = first start creates the encryption key without a passphrase (not recommended)
+secure_cookies: false          # set true when a TLS-terminating reverse proxy sits in front
+
+logging:
+  level: info                  # debug | info | warn | error
+  format: text                 # text | json
+  file: ""                     # blank = console only

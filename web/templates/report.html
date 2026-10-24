@@ -1,0 +1,71 @@
+{{define "content"}}
+<div class="head">
+  <h1>Report: {{.R.Scope}}</h1>
+  <div class="actions noprint">
+    <a class="btn" href="{{href "/report/inventory.csv" .Query}}">Hosts (CSV)</a>
+    <a class="btn" href="{{href "/report/findings.csv" .Query}}">Findings (CSV)</a>
+    <a class="btn" href="{{href "/report.json" .Query}}">Full report (JSON)</a>
+    <a class="btn" href="{{href "/report/findings.sarif" .Query}}">Findings (SARIF)</a>
+    <a class="btn" href="{{href "/report/findings.stix.json" .Query}}">Findings (STIX)</a>
+    <button class="btn primary" type="button" data-print>Print / save as PDF</button>
+  </div>
+</div>
+<form method="get" class="filters noprint">
+  <label>Domain <select name="target"><option value="">All domains</option>{{range .Targets}}<option value="{{.}}" {{if eq . $.Target}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+  <label>Changes in the last <select name="days">
+    <option value="1" {{if eq .Days 1}}selected{{end}}>24 hours</option>
+    <option value="7" {{if eq .Days 7}}selected{{end}}>7 days</option>
+    <option value="30" {{if eq .Days 30}}selected{{end}}>30 days</option>
+    <option value="90" {{if eq .Days 90}}selected{{end}}>90 days</option></select></label>
+  <button class="btn" type="submit">Update</button>
+</form>
+<p class="muted">Generated {{.R.Generated.Format "2006-01-02 15:04 MST"}} · changes since {{.R.Since.Format "2006-01-02 15:04 MST"}}</p>
+
+<section class="card">
+  <h2>Summary</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Domain</th><th>Status</th><th class="num">Hosts</th><th class="num">New hosts</th><th class="num">High</th><th class="num">Medium</th><th class="num">Low</th><th>Last scan</th></tr></thead>
+    <tbody>{{range .R.Targets}}<tr><td><a href="/targets/{{.ID}}">{{.Domain}}</a></td>
+      <td>{{if not .Enabled}}paused{{else if not .Baselined}}baselining{{else}}monitoring{{end}}</td>
+      <td class="num">{{.Hosts}}</td><td class="num">{{.NewHosts}}</td>
+      <td class="num">{{hasKey .OpenFindings "high"}}</td><td class="num">{{hasKey .OpenFindings "medium"}}</td><td class="num">{{hasKey .OpenFindings "low"}}</td>
+      <td>{{ts .LastScan}}</td></tr>{{else}}<tr><td colspan="8" class="muted">No domains.</td></tr>{{end}}</tbody>
+  </table></div>
+</section>
+
+<section class="card">
+  <h2>Open findings ({{len .R.Findings}})</h2>
+  {{if .R.Findings}}
+  <div class="scroll"><table>
+    <thead><tr><th>Severity</th><th>Finding</th><th>Source of evidence</th><th>Risk</th><th>Recommended fix</th><th>First seen</th></tr></thead>
+    <tbody>{{range .R.Findings}}{{$i := finfo .}}<tr><td><span class="badge {{sevClass .Severity}}">{{upper .Severity}}</span></td>
+      <td class="prose"><strong>{{$i.Title}}</strong><div class="mono">{{.Host}}</div><div class="small muted">{{.Root}}</div><div class="small">{{.Detail}}</div></td>
+      <td class="prose small">{{$i.Source}}</td><td class="prose small">{{$i.Risk}}</td><td class="prose small">{{$i.Solution}}</td><td>{{ts .FirstSeen}}</td></tr>{{end}}</tbody>
+  </table></div>
+  {{else}}<p class="muted">Nothing needs attention.</p>{{end}}
+  {{if .R.AckedFindings}}<p class="muted small">{{.R.AckedFindings}} acknowledged finding(s) are not listed.</p>{{end}}
+</section>
+
+<section class="card">
+  <h2>Changes in the last {{.Days}} day(s) ({{len .R.Changes}})</h2>
+  {{if .R.ChangeCounts}}<p>{{range .R.ChangeCounts}}<span class="badge muted">{{.Kind}} {{.Count}}</span> {{end}}</p>{{end}}
+  {{if .R.Changes}}
+  <div class="scroll"><table>
+    <thead><tr><th>When</th><th>Severity</th><th>Domain</th><th>Type</th><th>Host</th><th>Detail</th></tr></thead>
+    <tbody>{{range .R.Changes}}<tr><td>{{ts .TS}}</td><td><span class="badge {{sevClass .Severity}}">{{upper .Severity}}</span></td><td>{{.Root}}</td><td>{{.Kind}}</td><td class="mono">{{.Host}}</td><td class="mono small">{{.Detail}}</td></tr>{{end}}</tbody>
+  </table></div>
+  {{else}}<p class="muted">No changes were detected in this period.</p>{{end}}
+</section>
+
+<section class="card">
+  <h2>Host inventory ({{.R.InventoryTotal}}{{if gt .R.InventoryTotal 300}}, first 300 shown; export the CSV for all{{end}})</h2>
+  {{if .R.Inventory}}
+  <div class="scroll"><table>
+    <thead><tr><th>Host</th><th>Addresses &amp; owner</th><th>CNAME</th><th>First seen</th></tr></thead>
+    <tbody>{{range .R.Inventory}}<tr><td class="mono">{{.Host}}</td>
+      <td>{{range .Addrs}}<div><span class="mono">{{.IP}}</span>{{if .ASN}} <span class="muted small">AS{{.ASN}} {{.Org}}</span>{{end}}</div>{{end}}</td>
+      <td class="mono small">{{range .CNAMEs}}<div>{{.}}</div>{{end}}</td><td>{{ts .FirstSeen}}</td></tr>{{end}}</tbody>
+  </table></div>
+  {{else}}<p class="muted">No hosts yet.</p>{{end}}
+</section>
+{{end}}

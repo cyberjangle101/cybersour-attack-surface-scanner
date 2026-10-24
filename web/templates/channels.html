@@ -1,0 +1,57 @@
+{{define "content"}}
+<h1>Alert channels</h1>
+<p class="muted"><a href="/settings">&larr; Settings</a></p>
+<section class="card">
+  <p>Email alerts keep working as before. Channels add other places to send changes. Each channel only sends events at or above its own minimum severity and keeps its own place, so one that is down is retried without affecting the others. A new channel sends only what happens after you add it. Addresses and tokens are stored encrypted and never shown again.</p>
+  {{if .Rows}}
+  <div class="scroll"><table>
+    <thead><tr><th>Name</th><th>Type</th><th>Sends to</th><th>From</th><th>Last result</th><th>Actions</th></tr></thead>
+    <tbody>{{range .Rows}}<tr>
+      <td>{{.Name}}{{if not .Enabled}} <span class="muted">(off)</span>{{end}}</td>
+      <td>{{.KindLabel}}</td>
+      <td class="mono">{{.Target}}</td>
+      <td>{{.MinSev}}</td>
+      <td>{{if .LastErr}}<span class="flash bad">{{.LastErr}}</span>{{else if .LastOK}}OK {{.LastOK}}{{else}}not used yet{{end}}</td>
+      <td class="actions">
+        <form method="post" action="/settings/channels/{{.ID}}/test"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn" type="submit" data-busy="Sending…">Test</button></form>
+        <form method="post" action="/settings/channels/{{.ID}}/toggle"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn" type="submit">{{if .Enabled}}Turn off{{else}}Turn on{{end}}</button></form>
+        <form method="post" action="/settings/channels/{{.ID}}/delete"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn danger" type="submit">Remove</button></form>
+      </td>
+    </tr>{{end}}</tbody>
+  </table></div>
+  {{else}}<p class="muted">No channels yet.</p>{{end}}
+</section>
+<section class="card">
+  <h2>Add a channel</h2>
+  <form method="post" action="/settings/channels" class="settings">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <div class="grid">
+      <label>Name <input name="name" required maxlength="60" autocomplete="off"></label>
+      <label>Type <select name="kind">{{range .Kinds}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</select></label>
+      <label>Minimum severity <select name="min_sev"><option value="high">High only</option><option value="medium" selected>Medium and above</option><option value="low">Low and above</option><option value="info">Everything</option></select></label>
+    </div>
+    <h2>Web address (webhook, Slack, Teams, Jira site)</h2>
+    <div class="grid">
+      <label class="wide">Address <input name="url" placeholder="https://hooks.slack.com/services/…  or  https://yourcompany.atlassian.net" autocomplete="off" spellcheck="false"></label>
+      <label>Signing secret (webhook) <input type="password" name="secret" autocomplete="new-password"><span class="hint">Adds an X-EASM-Signature header (HMAC-SHA256 of the body).</span></label>
+      <label>Extra header name (webhook) <input name="header_name" autocomplete="off"></label>
+      <label>Extra header value <input type="password" name="header_value" autocomplete="new-password"></label>
+    </div>
+    <h2>Syslog</h2>
+    <div class="grid">
+      <label>Server <input name="addr" placeholder="siem.example.com:514" autocomplete="off"></label>
+      <label>Protocol <select name="proto"><option value="udp">UDP</option><option value="tcp">TCP</option></select></label>
+      <label>Format <select name="format"><option value="cef">CEF</option><option value="json">JSON</option></select></label>
+    </div>
+    <h2>Jira</h2>
+    <p class="muted">A ticket is created for each new finding (not for every inventory change), once per finding.</p>
+    <div class="grid">
+      <label>Project key <input name="project" placeholder="SEC" autocomplete="off"></label>
+      <label>Issue type <input name="issue_type" placeholder="Task" autocomplete="off"></label>
+      <label>Account email (Jira Cloud) <input name="user" autocomplete="off"><span class="hint">Leave blank for a personal access token (Jira Data Center).</span></label>
+      <label>API token <input type="password" name="token" autocomplete="new-password"></label>
+    </div>
+    <div class="actions"><button class="btn primary" type="submit">Add channel</button></div>
+  </form>
+</section>
+{{end}}

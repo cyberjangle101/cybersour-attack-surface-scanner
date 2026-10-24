@@ -1,0 +1,48 @@
+{{define "content"}}
+{{with .D}}
+<div class="head">
+  <div>
+    <p class="muted small"><a href="/assets">Assets</a> › <a href="{{href "/assets" (printf "type=%s" .Type)}}">{{.TypeLabel}}</a></p>
+    <h1 class="mono-h">{{.Title}}</h1>
+    <p class="muted">{{.Intro}}</p>
+  </div>
+</div>
+
+<section class="card">
+  <h2>Details</h2>
+  <dl class="facts">
+  {{range .Facts}}<dt>{{.K}}</dt><dd>{{template "cell" .V}}</dd>{{end}}
+  </dl>
+</section>
+
+{{if .Shot}}<section class="card"><h2>Screenshot</h2><img class="shot" src="{{.Shot}}" alt="Screenshot of the page as the agent saw it"></section>{{end}}
+
+{{range .Tables}}
+<section class="card">
+  <h2>{{.Title}} <span class="badge">{{len .Rows}}</span></h2>
+  {{if .Note}}<p class="muted small">{{.Note}}</p>{{end}}
+  {{if .Rows}}<div class="scroll"><table>
+    <thead><tr>{{range .Cols}}<th>{{.}}</th>{{end}}</tr></thead>
+    <tbody>{{range .Rows}}<tr>{{range .}}<td class="prose small">{{template "cell" .}}</td>{{end}}</tr>{{end}}</tbody>
+  </table></div>{{end}}
+</section>
+{{end}}
+
+{{if .Findings}}
+<section class="card">
+  <h2>Related findings <span class="badge">{{len .Findings}}</span></h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Severity</th><th>Finding</th><th>Evidence</th><th>Status</th><th>First seen</th></tr></thead>
+    <tbody>{{range .Findings}}{{$i := finfo .}}<tr>
+      <td><span class="badge {{sevClass .Severity}}">{{upper .Severity}}</span></td>
+      <td><strong>{{$i.Title}}</strong></td>
+      <td class="prose small">{{.Detail}}</td>
+      <td>{{.Status}}</td><td>{{ts .FirstSeen}}</td>
+    </tr>{{end}}</tbody>
+  </table></div>
+</section>
+{{end}}
+{{end}}
+{{end}}
+
+{{define "cell"}}{{if .Href}}<a href="{{.Href}}"{{if .Ext}} target="_blank" rel="noopener noreferrer"{{end}}{{if .Mono}} class="mono"{{end}}>{{.T}}</a>{{else if .Cls}}<span class="badge {{.Cls}}">{{.T}}</span>{{else if .Mono}}<span class="mono">{{.T}}</span>{{else}}{{.T}}{{end}}{{end}}

@@ -1,0 +1,48 @@
+{{define "content"}}
+<h1>Directory sign-in</h1>
+<p class="muted"><a href="/settings">&larr; Settings</a></p>
+<section class="card">
+  <p>People sign in with their normal Active Directory username and password (<span class="mono">jsmith</span>, <span class="mono">CORP\\jsmith</span> or <span class="mono">jsmith@corp.example</span>). Their password goes straight to your domain controller and is never stored here. Access comes from either a <strong>group</strong> below or an <strong>individual directory user</strong> added on the <a href="/users">Users</a> page. If a person has both, the individual setting wins. Local accounts always keep working, so you cannot lock yourself out.</p>
+  <form method="post" action="/settings/ad" class="settings">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label class="check"><input type="checkbox" name="enabled"{{if .C.Enabled}} checked{{end}}> Allow Active Directory sign-in</label>
+    <div class="grid">
+      <label class="wide">Domain controllers <textarea name="servers" rows="2" placeholder="dc1.corp.example&#10;dc2.corp.example:636" spellcheck="false">{{.Servers}}</textarea><span class="hint">One per line, tried in order. The default port is 636 for LDAPS and 389 for StartTLS.</span></label>
+      <label>Connection security <select name="security"><option value="ldaps"{{if eq .C.Security "ldaps"}} selected{{end}}>LDAPS (TLS from the start, port 636)</option><option value="starttls"{{if eq .C.Security "starttls"}} selected{{end}}>StartTLS (port 389)</option></select><span class="hint">Passwords are never sent unencrypted.</span></label>
+      <label>Domain (optional) <input name="domain" value="{{.C.Domain}}" placeholder="CORP" autocomplete="off"><span class="hint">The short domain name, so that CORP\jsmith is accepted and OTHER\jsmith is not.</span></label>
+      <label class="wide">Base DN <input name="base_dn" value="{{.C.BaseDN}}" placeholder="DC=corp,DC=example,DC=com" autocomplete="off" spellcheck="false"></label>
+      <label class="wide">Service account (bind DN) <input name="bind_dn" value="{{.C.BindDN}}" placeholder="CN=svc-easm,OU=Service Accounts,DC=corp,DC=example,DC=com" autocomplete="off" spellcheck="false"><span class="hint">A read-only account that can search users and groups. It does not need any other rights.</span></label>
+      <label>Service account password <input type="password" name="bind_password" autocomplete="new-password" placeholder="{{if .HasBind}}saved; leave blank to keep{{end}}"></label>
+      <label class="check"><input type="checkbox" name="bind_password_clear"> Remove the saved password</label>
+    </div>
+    <h2>Who may sign in: groups</h2>
+    <p class="muted">Members of a group (including through nested groups) get that role. A person in several groups gets the highest. Use the group&rsquo;s distinguished name or its plain name. People who are in none of these groups cannot sign in unless added as an individual directory user. Members only through their <em>primary</em> group (usually Domain Users) are not matched.</p>
+    <div class="scroll"><table>
+      <thead><tr><th>Directory group</th><th>Role</th></tr></thead>
+      <tbody>{{range $i, $g := .Rows}}<tr>
+        <td><input name="group_{{$i}}" value="{{$g.Group}}" placeholder="CN=EASM Admins,OU=Groups,DC=corp,DC=example,DC=com" aria-label="Group {{add $i 1}}" spellcheck="false"></td>
+        <td><select name="role_{{$i}}" aria-label="Role for group {{add $i 1}}"><option value="viewer"{{if eq $g.Role "viewer"}} selected{{end}}>Viewer</option><option value="analyst"{{if eq $g.Role "analyst"}} selected{{end}}>Analyst</option><option value="admin"{{if eq $g.Role "admin"}} selected{{end}}>Administrator</option></select></td>
+      </tr>{{end}}</tbody>
+    </table></div>
+    <details>
+      <summary>Advanced: certificates and user search</summary>
+      <div class="grid">
+        <label class="wide">Extra trusted certificate authority (PEM) <textarea name="ca_pem" rows="4" spellcheck="false" placeholder="-----BEGIN CERTIFICATE-----">{{.C.CAPEM}}</textarea><span class="hint">Paste your internal CA certificate if the domain controllers use certificates it issued. The system&rsquo;s own trusted authorities are always used as well.</span></label>
+        <label class="check wide"><input type="checkbox" name="skip_verify"{{if .C.SkipVerify}} checked{{end}}> Do not verify the domain controller&rsquo;s certificate (not recommended: anyone on the network could then read the passwords)</label>
+        <label class="wide">User search filter <input name="user_filter" value="{{.C.UserFilter}}" spellcheck="false" class="mono"><span class="hint">Must contain {username}; every occurrence is replaced with what the person typed (escaped). The default finds enabled people by account name or user principal name.</span></label>
+      </div>
+    </details>
+    <div class="actions"><button class="btn primary" type="submit">Save</button></div>
+  </form>
+</section>
+<section class="card">
+  <h2>Test</h2>
+  <p class="muted">Tests the <em>saved</em> settings. Leave the person blank to test only the connection and service account. The test signs nobody in.</p>
+  <form method="post" action="/settings/ad/test" class="grid">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>Username <input name="test_user" autocomplete="off"></label>
+    <label>Password <input type="password" name="test_password" autocomplete="off"></label>
+    <div class="wide"><button class="btn" type="submit" data-busy="Testing…">Test</button></div>
+  </form>
+</section>
+{{end}}
