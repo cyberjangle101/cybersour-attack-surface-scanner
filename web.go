@@ -486,16 +486,24 @@ func (s *Server) serverError(w http.ResponseWriter, r *http.Request, sess *Sessi
 	s.renderError(w, r, sess, http.StatusInternalServerError, "Something went wrong", "The error was logged. Please try again.")
 }
 
+// safeNext returns next only when it is a plain same-site path ("/findings?x=1");
+// anything that a browser could read as another site falls back to def.
 func safeNext(next, def string) string {
-	if !strings.HasPrefix(next, "/") || strings.HasPrefix(next, "//") || strings.Contains(next, "\\") {
-		return def
-	}
 	// Browsers drop tabs and newlines inside URLs, so "/<TAB>/evil.example" would
-	// become "//evil.example" (an off-site redirect). Reject every control character.
+	// become "//evil.example" (an off-site redirect), and they treat "\" like "/".
+	// Reject every control character and every backslash up front.
 	for _, c := range next {
-		if c < 0x20 || c == 0x7f {
+		if c < 0x20 || c == 0x7f || c == '\\' {
 			return def
 		}
+	}
+	if len(next) == 0 || next[0] != '/' || (len(next) > 1 && next[1] == '/') {
+		return def
+	}
+	// Belt and braces: after parsing it must still have no scheme and no host.
+	u, err := url.Parse(next)
+	if err != nil || u.Scheme != "" || u.Host != "" || u.User != nil || !strings.HasPrefix(u.Path, "/") {
+		return def
 	}
 	return next
 }
