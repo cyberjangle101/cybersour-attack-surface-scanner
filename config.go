@@ -23,11 +23,15 @@ import (
 
 // Bootstrap holds the few settings needed before the database can be opened (listen address, data folder, TLS, logging). Everything else is configured in the web interface.
 type Bootstrap struct {
-	Listen       string   `yaml:"listen"`
-	DataDir      string   `yaml:"data_dir"`
-	TLSCert      string   `yaml:"tls_cert"`
-	TLSKey       string   `yaml:"tls_key"`
-	AllowedHosts []string `yaml:"allowed_hosts"`
+	Listen  string `yaml:"listen"`
+	DataDir string `yaml:"data_dir"`
+
+	// LegacyDataDir is set when the data folder is the program's own folder (older versions).
+	LegacyDataDir  bool     `yaml:"-"`
+	DataDirWarning string   `yaml:"-"`
+	TLSCert        string   `yaml:"tls_cert"`
+	TLSKey         string   `yaml:"tls_key"`
+	AllowedHosts   []string `yaml:"allowed_hosts"`
 	// SecureCookies marks cookies Secure when TLS is terminated by a reverse proxy in front of the agent.
 	SecureCookies bool `yaml:"secure_cookies"`
 	// PlainHTTP turns off the automatic self-signed certificate and serves unencrypted HTTP.
@@ -81,15 +85,23 @@ func (b *Bootstrap) Finalize() error {
 		if err != nil {
 			return err
 		}
-		b.DataDir = filepath.Dir(exe)
+		dir, legacy, err := defaultDataDir(filepath.Dir(exe))
+		if err != nil {
+			return err
+		}
+		b.DataDir, b.LegacyDataDir = dir, legacy
 	}
 	abs, err := filepath.Abs(b.DataDir)
 	if err != nil {
 		return err
 	}
 	b.DataDir = abs
-	if err := os.MkdirAll(b.DataDir, 0o700); err != nil {
-		return fmt.Errorf("data_dir: %w", err)
+	if err := prepareDataDir(b.DataDir); err != nil {
+		// A failure to tighten permissions is reported but must not stop an existing installation.
+		if _, serr := os.Stat(b.DataDir); serr != nil {
+			return fmt.Errorf("data_dir: %w", err)
+		}
+		b.DataDirWarning = err.Error()
 	}
 	if b.Logging.File != "" && !filepath.IsAbs(b.Logging.File) {
 		b.Logging.File = filepath.Join(b.DataDir, b.Logging.File)

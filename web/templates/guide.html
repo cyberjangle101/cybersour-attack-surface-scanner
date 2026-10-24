@@ -1,0 +1,48 @@
+{{define "content"}}
+<div class="head"><h1>Quick guide</h1>{{if .Dismissable}}<form method="post" action="/guide/dismiss" class="inline"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="btn" type="submit">Got it, hide the guide on the dashboard</button></form>{{end}}</div>
+
+<section class="card">
+  <h2>What this tool does</h2>
+  <p>EASM Agent looks at your organisation the way an outsider does. You give it a domain you own; it finds the internet-facing names, addresses, certificates and services that belong to it, checks them for common weaknesses, and then <strong>watches for change</strong>. You hear about something only when it is new or has got worse.</p>
+  <p class="muted">By default it uses only public information (certificate logs, passive DNS, public DNS answers, public exposure databases). It sends no traffic to your servers unless an administrator turns on <em>Active checks</em> in Settings.</p>
+</section>
+
+<section class="card">
+  <h2>Get started in five steps</h2>
+  <ol class="steps">
+    <li><strong>Add your main domain.</strong> On the <a href="/">Dashboard</a>, type your registered domain (for example <span class="mono">example.com</span>, not <span class="mono">www.example.com</span>). Sub-domains are found for you. Adding only a sub-domain limits what can be seen.</li>
+    <li><strong>Optionally describe what "yours" looks like.</strong> Under <em>Ownership checks and options</em>, list the networks you expect your addresses to be on, as ASN numbers (such as <span class="mono">AS13335</span> for Cloudflare, <span class="mono">AS16509</span> for Amazon) or organisation words (such as <span class="mono">AMAZON, MICROSOFT</span>). Any address on a different network is raised as a HIGH finding, which is how forgotten servers and hijacked records show up. Leave it blank to skip the check.</li>
+    <li><strong>Wait for the first scan.</strong> It records what exists today and stays quiet; the progress bar shows what it is doing. From then on it re-scans on a schedule (Settings).</li>
+    <li><strong>Choose how you want to be told.</strong> In <a href="/settings">Settings</a> set up email, and under <em>Alert channels</em> Slack, Teams, a webhook, syslog or Jira. Without one of these, findings appear only here.</li>
+    <li><strong>Work through the findings.</strong> Each one says where the evidence came from, the risk, and the fix. <em>Acknowledge</em> what you accept (with a reason), fix the rest; fixed items close themselves on the next scan. The <a href="/report">Report</a> page makes a summary for managers and a detailed one for the security team.</li>
+  </ol>
+</section>
+
+<section class="card">
+  <h2>What it is good for</h2>
+  <div class="cols">
+    <div><h3>Forgotten and unknown assets</h3><p class="small">New sub-domains, new addresses and new certificates, including test and shadow-IT systems nobody told security about.</p></div>
+    <div><h3>Take-over risks</h3><p class="small">Names that point at a cloud service you no longer use, which an attacker could claim.</p></div>
+    <div><h3>Expiring and unexpected certificates</h3><p class="small">Certificates about to lapse, and certificates issued for your names by someone you do not recognise.</p></div>
+    <div><h3>Email spoofing protection</h3><p class="small">SPF, DKIM, DMARC, MTA-STS and related records, so criminals cannot easily send mail that looks like yours.</p></div>
+    <div><h3>Exposed services</h3><p class="small">Open admin ports, databases, and software with known vulnerabilities on your addresses.</p></div>
+    <div><h3>Brand and data leakage</h3><p class="small">Look-alike domains, leaked staff credentials and code repositories that mention your company (optional sources).</p></div>
+    <div><h3>Mergers and suppliers</h3><p class="small">Add an acquired company's or a supplier's domain to see its outside view before you connect to it (with permission).</p></div>
+    <div><h3>Evidence for audits</h3><p class="small">Dated reports, an audit trail of who accepted which risk, and exports (CSV, JSON, SARIF, STIX) for other tools.</p></div>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Where things are</h2>
+  <table class="kv">
+    <tr><th><a href="/">Dashboard</a></th><td>Add domains, see status, scan now.</td></tr>
+    <tr><th><a href="/findings">Findings</a></th><td>Everything that needs attention, with risk and fix.</td></tr>
+    <tr><th><a href="/assets">Assets</a></th><td>Every host, address, service, certificate and record found.</td></tr>
+    <tr><th><a href="/events">Events</a></th><td>The change log: what appeared, changed or disappeared.</td></tr>
+    <tr><th><a href="/report">Report</a></th><td>Printable summary and exports.</td></tr>
+    <tr><th><a href="/health">System health</a></th><td>Whether every data source is working, and where the data is stored.</td></tr>
+    {{if .IsAdmin}}<tr><th><a href="/settings">Settings</a></th><td>Schedule, alerts, data sources, certificate, backups, sign-in options.</td></tr>{{end}}
+  </table>
+  <p class="muted small">Only scan domains you own or are authorised to assess. Your role decides what you can change: <em>viewers</em> read, <em>analysts</em> also triage findings, <em>administrators</em> manage everything.</p>
+</section>
+{{end}}

@@ -1,0 +1,23 @@
+{{define "targetsTable"}}{{if .Rows}}
+  <div class="scroll"><table>
+    <thead><tr><th>Domain</th><th>Status</th><th class="num">Hosts</th><th>Findings</th><th>Last scan</th><th>Next scan</th><th></th></tr></thead>
+    <tbody>
+    {{range .Rows}}
+    <tr>
+      <td><a href="/targets/{{.T.ID}}"><strong>{{.T.Domain}}</strong></a>{{if .Subdomain}} <span class="badge warn" title="This is a sub-domain, not a registered domain. Only names below it are discovered, and email/DNS records at the parent domain are not checked.">sub-domain scope</span>{{end}}{{if .T.Notes}}<div class="muted small">{{.T.Notes}}</div>{{end}}</td>
+      <td><span class="badge {{.StateClass}}">{{.State}}</span>{{if and (eq .T.LastStatus "error") .T.LastError}}<div class="muted small">{{.T.LastError}}</div>{{end}}{{if .Prog}}{{template "progress" .Prog}}{{else if eq .State "Queued"}}<div class="muted small">Waiting for a free scan slot…</div>{{end}}</td>
+      <td class="num">{{.Hosts}}</td>
+      <td>{{if .FindingTotal}}<a href="/findings?target={{.T.Domain | urlquery}}"><span class="badge {{sevClass .MaxSev}}">{{.FindingTotal}} open</span></a>{{else}}<span class="muted">none</span>{{end}}</td>
+      <td title="{{ts .T.LastEnd}}">{{if .T.LastEnd}}{{ago .T.LastEnd}}{{else}}—{{end}}</td>
+      <td>{{if .T.Enabled}}{{until .T.NextScan}}{{else}}—{{end}}</td>
+      <td class="actions">
+        {{if $.CanTriage}}{{if .T.Enabled}}
+        <form method="post" action="/targets/{{.T.ID}}/scan" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn small" type="submit">Scan now</button></form>
+        {{end}}{{end}}
+        {{if $.IsAdmin}}<a class="icon-btn danger" href="/targets/{{.T.ID}}/delete" title="Delete {{.T.Domain}} and all of its data" aria-label="Delete {{.T.Domain}}"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14M10 11v6M14 11v6"/></svg></a>{{end}}
+      </td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table></div>
+  {{else}}<p class="muted">Nothing is being monitored yet.{{if .IsAdmin}} Add your first domain above.{{end}}</p>{{end}}{{end}}

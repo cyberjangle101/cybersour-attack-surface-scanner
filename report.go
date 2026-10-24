@@ -51,6 +51,14 @@ type Report struct {
 	InventoryTotal int             `json:"inventory_total"`
 	Certs          []CertRow       `json:"certificates"`
 	CertTotal      int             `json:"certificates_total"`
+
+	// Management view (see report_model.go); not part of the JSON export.
+	Exec             ExecSummary    `json:"-"`
+	NewFindings      []Finding      `json:"-"`
+	ResolvedFindings []Finding      `json:"-"`
+	ByAsset          []AssetGroup   `json:"-"`
+	ByFinding        []FindingGroup `json:"-"`
+	Filter           ReportOpts     `json:"-"`
 }
 
 // MarshalJSON writes the report with the same field names the CSV exports use.
@@ -66,6 +74,11 @@ func (r Report) MarshalJSON() ([]byte, error) {
 // BuildReport assembles everything the report page, exports and digest email need.
 // root=="" covers all targets. invLimit<=0 skips the host inventory (digest emails).
 func BuildReport(st *Store, root string, since time.Time, invLimit int) (*Report, error) {
+	return BuildReportOpts(st, root, since, invLimit, ReportOpts{})
+}
+
+// BuildReportOpts is BuildReport with a severity filter for the detail sections.
+func BuildReportOpts(st *Store, root string, since time.Time, invLimit int, opts ReportOpts) (*Report, error) {
 	rep := &Report{Generated: time.Now(), Since: since, Scope: "All targets", Days: int(time.Since(since).Hours()/24 + 0.5)}
 	if root != "" {
 		rep.Scope = root
@@ -115,13 +128,11 @@ func BuildReport(st *Store, root string, since time.Time, invLimit int) (*Report
 		return nil, err
 	}
 	for _, f := range all {
-		switch f.Status {
-		case "open":
-			rep.Findings = append(rep.Findings, f)
-		case "ack":
+		if f.Status == "ack" {
 			rep.AckedFindings++
 		}
 	}
+	enrichReport(rep, all, since, opts) // also fills rep.Findings with the open findings that pass the filter
 	if invLimit > 0 {
 		if rep.Inventory, rep.InventoryTotal, err = st.Inventory(root, "", invLimit); err != nil {
 			return nil, err

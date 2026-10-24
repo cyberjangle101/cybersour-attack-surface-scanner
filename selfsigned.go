@@ -39,6 +39,13 @@ type certKeeper struct {
 	mu   sync.Mutex
 	cert *tls.Certificate
 	leaf *x509.Certificate
+
+	// An administrator-supplied certificate (see customcert.go) is served in preference to the self-signed one.
+	vault        *Vault
+	custom       *tls.Certificate
+	customLeaf   *x509.Certificate
+	customChain  int
+	customWarned bool
 }
 
 // newCertKeeper prepares a keeper for a listen address and returns it with the
@@ -103,6 +110,9 @@ func (k *certKeeper) setListen(listen string, extraHosts []string) error {
 func (k *certKeeper) Get(*tls.ClientHelloInfo) (*tls.Certificate, error) {
 	k.mu.Lock()
 	defer k.mu.Unlock()
+	if c := k.customUsable(); c != nil {
+		return c, nil
+	}
 	if k.cert != nil && time.Until(k.leaf.NotAfter) > selfSignedRenewAt {
 		return k.cert, nil
 	}

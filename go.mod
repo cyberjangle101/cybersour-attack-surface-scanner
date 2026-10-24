@@ -5,6 +5,7 @@ go 1.23
 require (
 	github.com/Azure/go-ntlmssp v0.1.1 // indirect
 	github.com/go-ldap/ldap/v3 v3.4.8
+	github.com/go-pdf/fpdf v0.9.0
 	github.com/kardianos/service v1.2.2
 	github.com/miekg/dns v1.1.62
 	github.com/ncruces/go-sqlite3 v0.30.5
