@@ -55,9 +55,9 @@ Run these on the whole modified code base, not just the changed files.
 | # | Check | Command | Pass condition |
 |---|-------|---------|----------------|
 | 1 | Unit and integration tests | `go test -count=1 ./...` | all ok |
-| 2 | Race detector | `CGO_ENABLED=1 go test -race -count=1 ./...` | no races |
+| 2 | Race detector | `CGO_ENABLED=1 go test -race -count=1 ./...` (needs a C compiler; on Windows, WinLibs gcc on PATH) | no races |
 | 3 | Lint | `golangci-lint run ./...` | 0 issues |
-| 4 | Static scan (SAST) | `semgrep --config auto --error .` | 0 findings. Fix them; do not suppress without a reason on that line. |
+| 4 | Static scan (SAST) | `semgrep scan --error --metrics=off --config p/default --config p/golang --config p/secrets --config p/owasp-top-ten --exclude web/static .` (`--config auto` needs metrics on). Native Windows Semgrep fails on these rules: on Windows, rely on the Semgrep job in the Security Scan workflow (`gh workflow run security-scan.yml --ref <branch>`). | 0 findings. Fix them; do not suppress without a reason on that line. |
 | 5 | Dependency scan (SCA) | `osv-scanner --lockfile=go.mod` (or OWASP Dependency-Check), plus `govulncheck ./...` | no known vulnerabilities |
 | 6 | Secrets scan | `trufflehog git file://. --only-verified --fail` (also `trufflehog filesystem .`) | 0 findings |
 | 7 | Fuzzing | `go test -run xxx -fuzz <FuzzTarget> -fuzztime 30s .` for every Fuzz target in packages you touched | no crashes |

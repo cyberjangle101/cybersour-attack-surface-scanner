@@ -39,8 +39,12 @@ type Bootstrap struct {
 	// ListenExplicit is true when the listen address came from the command line or config file (it then cannot be changed in the web interface).
 	ListenExplicit bool `yaml:"-"`
 	// NoPassphrase lets a first start create the encryption key without a passphrase (not recommended).
-	NoPassphrase bool       `yaml:"no_passphrase"`
-	Logging      LoggingCfg `yaml:"logging"`
+	NoPassphrase bool `yaml:"no_passphrase"`
+	// NoBrowser stops an interactive start from opening the web interface in the default browser.
+	NoBrowser bool `yaml:"no_browser"`
+	// KeepConsole keeps the console window visible on Windows after an interactive start.
+	KeepConsole bool       `yaml:"keep_console"`
+	Logging     LoggingCfg `yaml:"logging"`
 }
 
 // LoggingCfg selects log level, format and optional log file.

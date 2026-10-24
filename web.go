@@ -81,6 +81,7 @@ type Server struct {
 	hosts    map[string]bool // allowed Host headers (loopback binds); nil = no check
 	listen   ListenControl   // changes the listen address at run time (nil in tests)
 	certs    CertControl     // shows and replaces the web server certificate (nil when a certificate is configured by file, and in tests)
+	stop     func()          // shuts down an interactive run from System health (nil under a service manager and in tests)
 
 	dummyHash []byte
 }
@@ -247,6 +248,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /assets.csv", s.auth(permView, s.assetsCSV))
 	mux.HandleFunc("GET /health", s.auth(permView, s.healthView))
 	mux.HandleFunc("POST /health/check", s.auth(permTriage, s.healthCheck))
+	mux.HandleFunc("POST /system/stop", s.auth(permAdmin, s.stopAgent))
 
 	mux.HandleFunc("GET /report", s.auth(permView, s.report))
 	mux.HandleFunc("GET /report/inventory.csv", s.auth(permView, s.reportCSV("inventory")))
@@ -510,7 +512,10 @@ func safeNext(next, def string) string {
 			return def
 		}
 	}
-	if len(next) == 0 || next[0] != '/' || (len(next) > 1 && next[1] == '/') {
+	// "//host" and "/\host" are protocol-relative URLs to another site. The backslash
+	// is already refused above; it is repeated here so the check reads (and is
+	// recognised by CodeQL) as one complete same-site test.
+	if len(next) == 0 || next[0] != '/' || (len(next) > 1 && (next[1] == '/' || next[1] == '\\')) {
 		return def
 	}
 	// Belt and braces: after parsing it must still have no scheme and no host.
@@ -1025,9 +1030,17 @@ func (s *Server) targetScan(w http.ResponseWriter, r *http.Request, sess *Sessio
 		return
 	}
 	refresh := r.PostFormValue("refresh") == "1"
+	active := r.PostFormValue("active") == "1"
+	if active && sess.Role != RoleAdmin { // active probing is governed by the admin-only Settings
+		s.renderError(w, r, sess, http.StatusForbidden, "Not allowed", "Only an administrator can start a scan with active checks.")
+		return
+	}
 	ok, err := s.store.RequestScan(t.ID)
 	if err == nil && ok && refresh {
 		err = s.store.SetRefresh(t.Domain, true)
+	}
+	if err == nil && ok && active {
+		err = s.store.SetActiveOnce(t.Domain)
 	}
 	switch {
 	case err != nil:
@@ -1037,7 +1050,10 @@ func (s *Server) targetScan(w http.ResponseWriter, r *http.Request, sess *Sessio
 		s.flash(sess, "warn", "A scan is already running, or the target is paused.")
 	default:
 		s.eng.Wake()
-		if refresh {
+		if active {
+			s.audit(sess, r, "scan.active", t.Domain, "active checks for this scan")
+			s.flash(sess, "good", "Scan queued with active checks: the agent will connect to this domain's servers for this scan only.")
+		} else if refresh {
 			s.audit(sess, r, "scan.refresh", t.Domain, "exposure data cache bypassed")
 			s.flash(sess, "good", "Scan queued. Saved exposure answers will be ignored so everything is asked again.")
 		} else {
@@ -1270,7 +1286,7 @@ func (s *Server) report(w http.ResponseWriter, r *http.Request, sess *Session) {
 		s.serverError(w, r, sess, err)
 		return
 	}
-	rep.Days = days
+	rep.Days, rep.PreparedBy = days, PreparedBy(sess)
 	s.render(w, r, sess, "report", http.StatusOK, map[string]any{
 		"Title": "Report", "Nav": "report", "R": rep, "Targets": names, "Target": root, "Days": days,
 		"Query": reportQuery(root, days, opts),
@@ -1289,7 +1305,7 @@ func (s *Server) reportPDF(w http.ResponseWriter, r *http.Request, sess *Session
 		s.serverError(w, r, sess, err)
 		return
 	}
-	rep.Days = days
+	rep.Days, rep.PreparedBy = days, PreparedBy(sess)
 	pdf, err := RenderReportPDF(rep, version)
 	if err != nil {
 		s.serverError(w, r, sess, err)
@@ -1341,6 +1357,7 @@ func (s *Server) reportJSON(w http.ResponseWriter, r *http.Request, sess *Sessio
 		s.serverError(w, r, sess, err)
 		return
 	}
+	rep.PreparedBy = PreparedBy(sess)
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Content-Disposition", `attachment; filename="easm-report-`+time.Now().Format("20060102")+`.json"`)
 	enc := json.NewEncoder(w)
@@ -1401,7 +1418,7 @@ func parseSettingsForm(r *http.Request, cur Settings) (Settings, error) {
 	on := func(n string) bool { return r.PostFormValue(n) == "on" }
 	str := func(n string) string { return strings.TrimSpace(r.PostFormValue(n)) }
 	s.AlertImmediateSeverity, s.DigestFrequency = str("alert_immediate_severity"), str("digest_frequency")
-	s.PublicURL = str("public_url")
+	s.PublicURL, s.OrgName = str("public_url"), r.PostFormValue("org_name")
 	s.SMTPHost, s.SMTPSecurity, s.SMTPUsername = str("smtp_host"), str("smtp_security"), str("smtp_username")
 	s.SMTPFrom, s.SMTPSubjectPrefix = str("smtp_from"), r.PostFormValue("smtp_subject_prefix")
 	s.DNSResolvers = splitList(r.PostFormValue("dns_resolvers"), true)

@@ -81,6 +81,32 @@ func TestRolesMatrix(t *testing.T) {
 	if code, _, _ := viewer.post("/targets/1/scan", nil); code != 403 {
 		t.Errorf("viewer scan = %d", code)
 	}
+	// active checks touch the domain's servers: administrators only, like their Settings
+	if _, body, _ := analyst.get("/targets/1"); strings.Contains(body, "with active checks") {
+		t.Error("analyst is offered the active scan")
+	}
+	if code, _, _ := analyst.post("/targets/1/scan", url.Values{"active": {"1"}}); code != 403 {
+		t.Errorf("analyst active scan = %d, want 403", code)
+	}
+	if code, _, _ := viewer.post("/targets/1/scan", url.Values{"active": {"1"}}); code != 403 {
+		t.Errorf("viewer active scan = %d, want 403", code)
+	}
+	if e.store.TakeActiveOnce("example.test") {
+		t.Fatal("a refused request left an active-scan request behind")
+	}
+	e.scan(1) // run what the analyst queued so the next request is accepted
+	if _, body, _ := admin.get("/targets/1"); !strings.Contains(body, "Scan now with active checks") {
+		t.Error("admin is not offered the active scan")
+	}
+	if code, _, _ := admin.post("/targets/1/scan", url.Values{"active": {"1"}}); code != 303 {
+		t.Errorf("admin active scan = %d", code)
+	}
+	if !e.store.TakeActiveOnce("example.test") {
+		t.Error("admin active scan did not request active checks")
+	}
+	if _, au, _ := admin.get("/audit"); !strings.Contains(au, "scan.active") {
+		t.Error("the active scan request is not in the audit trail")
+	}
 	// accept needs a reason
 	if _, _, r := analyst.post("/findings/1/ack", url.Values{}); loc(r) != "/findings" {
 		t.Fatal("unexpected redirect")

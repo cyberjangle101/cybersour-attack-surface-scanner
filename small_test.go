@@ -15,7 +15,7 @@ func TestIDNIsConvertedToPunycode(t *testing.T) {
 		"xn--bcher-kva.example": "xn--bcher-kva.example",
 		"plain.example":         "plain.example",
 		"пример.example":        "xn--e1afmkfd.example",
-		"bad‮name.example":      "",
+		"bad\u202ename.example": "", // U+202E right-to-left override
 	} {
 		if got := normalizeHost(in); got != want {
 			t.Errorf("normalizeHost(%q) = %q, want %q", in, got, want)

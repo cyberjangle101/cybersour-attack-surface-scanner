@@ -1,6 +1,10 @@
 {{define "content"}}
 <div class="head">
-  <h1>Report: {{.R.Scope}}</h1>
+  <div>
+    <p class="muted">External attack surface report</p>
+    <h1>{{.R.Heading}}</h1>
+    <p>Domains: {{.R.DomainList}}</p>
+  </div>
   <div class="actions noprint">
     <a class="btn primary" href="{{href "/report.pdf" .Query}}">Download PDF</a>
     <button class="btn" type="button" data-print>Print</button>
@@ -26,7 +30,7 @@
     <label><input type="checkbox" name="sev" value="info" {{if .R.Filter.Has "info"}}checked{{end}}> Info</label></span>
   <button class="btn" type="submit">Update</button>
 </form>
-<p class="muted">Generated {{.R.Generated.Format "2006-01-02 15:04 MST"}} · changes since {{.R.Since.Format "2006-01-02 15:04 MST"}}</p>
+<p class="muted">Prepared by {{.R.PreparedBy}} · generated {{.R.Generated.Format "2006-01-02 15:04 MST"}} · changes since {{.R.Since.Format "2006-01-02 15:04 MST"}}</p>
 <nav class="toc noprint"><a href="#exec">Executive summary</a><a href="#open">Open findings</a><a href="#new">New</a><a href="#resolved">Resolved</a><a href="#byfinding">By finding</a><a href="#byasset">By asset</a><a href="#changes">Changes</a><a href="#inventory">Inventory</a></nav>
 
 {{with .R.Exec}}

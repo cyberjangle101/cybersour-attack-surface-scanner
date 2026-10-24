@@ -59,7 +59,7 @@ func TestEncryptedStoreIsUnreadableOnDisk(t *testing.T) {
 	if v, ok, _ := st2.getMeta("note"); !ok || v != marker {
 		t.Fatalf("data lost: %q %v", v, ok)
 	}
-	st2.Close()
+	_ = st2.Close()
 
 	// wrong key is refused with advice, and cannot be used to read anything
 	if _, err := OpenEncryptedStore(path, testKey(2), nil); err == nil || !strings.Contains(err.Error(), "easm.key") {
@@ -70,7 +70,7 @@ func TestEncryptedStoreIsUnreadableOnDisk(t *testing.T) {
 		t.Fatal("file still looks like plain SQLite")
 	}
 	if plain, err := OpenStore(path); err == nil {
-		plain.Close()
+		_ = plain.Close()
 		t.Fatal("encrypted file opened without a key")
 	}
 }
@@ -95,13 +95,13 @@ func TestPlainDatabaseIsMigratedAndShredded(t *testing.T) {
 	if !bytes.Contains(readAllDBFiles(t, path), []byte("migrate.example")) {
 		t.Fatal("test precondition: plaintext should be visible before migration")
 	}
-	old.Close()
+	_ = old.Close()
 
 	st, err := OpenEncryptedStore(path, testKey(7), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st.Close()
+	defer func() { _ = st.Close() }()
 	if n, _ := st.CountUsers(); n != 1 {
 		t.Fatalf("user lost in migration (%d)", n)
 	}
@@ -119,12 +119,12 @@ func TestPlainDatabaseIsMigratedAndShredded(t *testing.T) {
 		t.Error("temporary migration file left behind")
 	}
 	// a second start is a no-op
-	st.Close()
+	_ = st.Close()
 	st2, err := OpenEncryptedStore(path, testKey(7), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	st2.Close()
+	_ = st2.Close()
 }
 
 func TestInterruptedMigrationIsCompleted(t *testing.T) {
@@ -135,7 +135,7 @@ func TestInterruptedMigrationIsCompleted(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = st.setMeta("k", "v")
-	st.Close()
+	_ = st.Close()
 	// simulate: the verified encrypted copy exists under the temp name, the original is gone
 	if err := os.Rename(path, path+".encrypting"); err != nil {
 		t.Fatal(err)
@@ -144,7 +144,7 @@ func TestInterruptedMigrationIsCompleted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("did not recover: %v", err)
 	}
-	defer st.Close()
+	defer func() { _ = st.Close() }()
 	if v, _, _ := st.getMeta("k"); v != "v" {
 		t.Fatal("data missing after recovery")
 	}

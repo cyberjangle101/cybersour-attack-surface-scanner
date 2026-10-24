@@ -3,8 +3,23 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
+
+// assertOwnerOnly checks that a secret file is readable by its owner only. On
+// Windows file modes are always 0666; secrets are protected by the data folder's
+// ACL (restrictDir) instead, so there only the file's existence is checked.
+func assertOwnerOnly(t *testing.T, file, what string) {
+	t.Helper()
+	fi, err := os.Stat(file)
+	if err != nil {
+		t.Fatalf("%s: %v", what, err)
+	}
+	if runtime.GOOS != "windows" && fi.Mode().Perm()&0o077 != 0 {
+		t.Errorf("%s must be private to the owner: %v", what, fi.Mode())
+	}
+}
 
 func TestPlatformDataDir(t *testing.T) {
 	home := func() (string, error) { return "/home/ann", nil }

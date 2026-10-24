@@ -59,7 +59,7 @@ func TestLab(t *testing.T) {
 	}
 	srv := &http.Server{Handler: e.web.Handler(), ReadHeaderTimeout: 5 * time.Second}
 	go func() { _ = srv.Serve(ln) }()
-	defer srv.Close()
+	defer func() { _ = srv.Close() }()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go h.eng.Run(ctx)

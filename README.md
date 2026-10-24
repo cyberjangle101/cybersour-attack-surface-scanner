@@ -2,7 +2,7 @@
 
 A lightweight, single-binary agent for continuous **External Attack Surface Management (EASM)**. It runs as a persistent background service on Windows or Linux, watches the internet-facing footprint of the organisations you tell it about, and emails you only when something **changes**.
 
-> **Status:** v1.7.0. See "What's new in 1.7" below.
+> **Status:** v1.8.0. See "What's new in 1.8" below.
 
 ## Why
 
@@ -31,8 +31,8 @@ Attack surfaces drift. A forgotten subdomain, a new certificate or an unexpected
 
 1. Build (or use the provided binary): `go mod tidy && go build -o easm-agent .`
    Windows: `go build -o easm-agent.exe .`
-2. Run it: `easm-agent` (Windows: double-click or run `easm-agent.exe` in a terminal).
-3. Open **https://127.0.0.1:8080** and create the first administrator account.
+2. Run it: `easm-agent` (Windows: double-click or run `easm-agent.exe` in a terminal) and enter the key passphrase.
+3. The web interface opens in your browser (**https://127.0.0.1:8080**); create the first administrator account.
 4. **Settings** → configure email (SMTP) and press *Send test email*.
 5. **Dashboard** → *Add an entity to monitor*: enter `example.com`. Optionally add expected ASNs,
    organisation keywords and ignore patterns. Scanning starts immediately.
@@ -50,6 +50,18 @@ are emailed only about new subdomains, new IP/DNS records, new certificates and 
 * **Alerts:** HTML + plaintext email (STARTTLS / implicit TLS), plus an optional daily/weekly digest that includes the same source/risk/fix text.
 * **Reports:** per-domain or all-domain report page, CSV exports (inventory, findings, assets) and JSON.
 * **Users:** admin, analyst and read-only viewer roles; local accounts with optional two-factor sign-in, or Active Directory sign-in (see *What's new in 1.6*).
+
+## What's new in 1.8
+
+**Opens itself, then gets out of the way.** After you enter the key passphrase, the web interface opens in your default browser. On Windows, when the program was double-clicked, its console window then hides and the agent keeps running in the background; an administrator stops it from *System health → Stop agent* (recorded in the audit trail). Started from an existing terminal, the console stays as it was and Ctrl-C works. Use `-no-browser` and `-keep-console` (or `no_browser` / `keep_console` in the config file) to turn either off. To run unattended across sign-outs and reboots, install it as a service instead (see *Running as a service*).
+
+**System health is current at start-up.** The connectors are now checked automatically right after start and every 6 hours, so the Health page no longer shows failures left over from the previous session until someone presses *Check connections now*.
+
+**Scan now with active checks.** Administrators get a third button on a domain's page that runs the active checks (TLS certificates, home pages, exposed files, cloud storage) for that one scan, even while *Settings → Active checks* stays off. It follows the same rules as the setting: only addresses inside the networks you declared unless *probe outside my networks* is on, never private addresses, read-only requests. Passive scans that follow do not resolve what it found, since they cannot check it. Each request is in the audit trail.
+
+**Reports say whose they are and who made them.** Set *Settings → Organisation name* and every report (page, PDF, JSON, digest email) opens with that name, the domains it covers and *Prepared by* (the signed-in user and role, the API token's owner, or "EASM Agent (scheduled digest)"). Without an organisation name, a single-domain report is headed by its domain.
+
+**Gate fixes.** All lint findings fixed, the test suite passes on Windows, a data race in a test fixed, a CodeQL redirect-check alert resolved, Semgrep added to the Security Scan workflow, and known false positives recorded in `.gitleaksignore`.
 
 ## What's new in 1.7
 
@@ -145,6 +157,8 @@ Also available: `stop`, `restart`, `uninstall`. Logs go to the console/service m
 | `-data-dir path` | Where `easm.db` and `easm.key` live (default: next to the program) |
 | `-config file` | Optional bootstrap YAML, see `config.example.yaml` |
 | `-reset-password user` | Offline password recovery, then exit |
+| `-no-browser` | Do not open the web interface in the browser at start-up |
+| `-keep-console` | Windows: keep the console window visible after start-up |
 | `-service action` | install / uninstall / start / stop / restart / status |
 | `-version` | Print version |
 

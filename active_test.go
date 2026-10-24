@@ -17,6 +17,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -130,7 +131,7 @@ func page(title, body string) http.Handler {
 			http.NotFound(w, r)
 			return
 		}
-		fmt.Fprintf(w, "<html><head><title>%s</title></head><body>%s</body></html>", title, body)
+		_, _ = fmt.Fprintf(w, "<html><head><title>%s</title></head><body>%s</body></html>", title, body)
 	})
 }
 
@@ -194,12 +195,12 @@ func TestActiveChecksFindProblems(t *testing.T) {
 	l.serve("203.0.113.37", 80, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/":
-			fmt.Fprint(w, "<html><head><title>Welcome to nginx!</title></head><body><h1>Welcome to nginx!</h1></body></html>")
+			_, _ = fmt.Fprint(w, "<html><head><title>Welcome to nginx!</title></head><body><h1>Welcome to nginx!</h1></body></html>")
 		case "/.git/HEAD":
-			fmt.Fprint(w, "ref: refs/heads/main\n")
+			_, _ = fmt.Fprint(w, "ref: refs/heads/main\n")
 		case "/.env":
 			w.Header().Set("Content-Type", "text/plain")
-			fmt.Fprint(w, "APP_KEY=base64:abc\nDB_PASSWORD=hunter2\n")
+			_, _ = fmt.Fprint(w, "APP_KEY=base64:abc\nDB_PASSWORD=hunter2\n")
 		default:
 			http.NotFound(w, r)
 		}
@@ -207,12 +208,12 @@ func TestActiveChecksFindProblems(t *testing.T) {
 	// spa: answers 200 with the same page for every path: must produce no exposed-path findings
 	l.host("spa.example.test", "203.0.113.38")
 	l.serve("203.0.113.38", 80, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, "<html><head><title>App</title></head><body>ref: refs/heads/main\nDB_PASSWORD=x</body></html>")
+		_, _ = fmt.Fprint(w, "<html><head><title>App</title></head><body>ref: refs/heads/main\nDB_PASSWORD=x</body></html>")
 	}), nil, 0)
 	// idx: directory listing
 	l.host("idx.example.test", "203.0.113.39")
 	l.serve("203.0.113.39", 80, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, "<html><head><title>Index of /</title></head><body><h1>Index of /</h1></body></html>")
+		_, _ = fmt.Fprint(w, "<html><head><title>Index of /</title></head><body><h1>Index of /</h1></body></html>")
 	}), nil, 0)
 
 	tg := l.h.addTarget("example.test", "AS64500")
@@ -290,15 +291,18 @@ func isWebKind(k string) bool {
 
 func TestActiveChecksOffByDefaultAndOwnershipScoped(t *testing.T) {
 	l := newWebLab(t)
-	hits := 0
+	var hits atomic.Int32 // the lab serves each probe on its own goroutine
 	l.host("www.example.test", "203.0.113.10")
 	l.serve("203.0.113.10", 80, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hits++
-		fmt.Fprint(w, "<title>Welcome to nginx!</title>")
+		hits.Add(1)
+		_, _ = fmt.Fprint(w, "<title>Welcome to nginx!</title>")
 	}), nil, 0)
 	// a vendor-hosted name outside the expected networks
 	l.h.dns.add(t, "api.example.test. 60 IN A 198.51.100.7")
-	l.serve("198.51.100.7", 80, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hits += 1000; fmt.Fprint(w, "<title>vendor</title>") }), nil, 0)
+	l.serve("198.51.100.7", 80, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1000)
+		_, _ = fmt.Fprint(w, "<title>vendor</title>")
+	}), nil, 0)
 
 	// off => no probes at all
 	st, _ := l.h.store.LoadSettings()
@@ -307,24 +311,70 @@ func TestActiveChecksOffByDefaultAndOwnershipScoped(t *testing.T) {
 	l.setProber()
 	tg := l.h.addTarget("example.test", "AS64500")
 	l.h.scanN(tg.ID, 1)
-	if hits != 0 {
-		t.Fatalf("active checks ran while switched off (%d)", hits)
+	if n := hits.Load(); n != 0 {
+		t.Fatalf("active checks ran while switched off (%d)", n)
 	}
 	// on => only the declared networks
 	st.ActiveChecks = true
 	l.h.saveSettings(st)
 	l.setProber()
 	l.h.scanN(tg.ID, 1)
-	if hits == 0 || hits >= 1000 {
-		t.Fatalf("expected only the owned host to be probed, hits=%d", hits)
+	if n := hits.Load(); n == 0 || n >= 1000 {
+		t.Fatalf("expected only the owned host to be probed, hits=%d", n)
 	}
 	// opting in to foreign addresses probes the vendor too
 	st.ActiveForeign = true
 	l.h.saveSettings(st)
 	l.setProber()
 	l.h.scanN(tg.ID, 1)
-	if hits < 1000 {
-		t.Errorf("foreign probing was enabled but did not happen (%d)", hits)
+	if n := hits.Load(); n < 1000 {
+		t.Errorf("foreign probing was enabled but did not happen (%d)", n)
+	}
+}
+
+// "Scan now with active checks" runs them for one scan while Settings keeps them
+// off, still only inside the declared networks, and a later passive scan neither
+// probes nor resolves what the active scan found.
+func TestActiveChecksOnceOnRequest(t *testing.T) {
+	l := newWebLab(t)
+	var hits atomic.Int32
+	l.host("www.example.test", "203.0.113.10")
+	l.serve("203.0.113.10", 80, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		_, _ = fmt.Fprint(w, "<title>Welcome to nginx!</title>")
+	}), nil, 0)
+	l.h.dns.add(t, "api.example.test. 60 IN A 198.51.100.7")
+	l.serve("198.51.100.7", 80, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hits.Add(1000) }), nil, 0)
+	st, _ := l.h.store.LoadSettings()
+	st.ActiveChecks = false
+	l.h.saveSettings(st)
+	l.setProber()
+	tg := l.h.addTarget("example.test", "AS64500")
+
+	if err := l.h.store.SetActiveOnce("example.test"); err != nil {
+		t.Fatal(err)
+	}
+	l.h.scanN(tg.ID, 1)
+	if n := hits.Load(); n == 0 || n >= 1000 {
+		t.Fatalf("one-off active scan: expected only the owned host to be probed, hits=%d", n)
+	}
+	f := l.findingFor("default-page", "www.example.test")
+	if f == nil {
+		t.Fatalf("one-off active scan raised no web finding: %v", l.openKinds())
+	}
+	if l.h.store.TakeActiveOnce("example.test") {
+		t.Error("the one-off request was not consumed by the scan")
+	}
+
+	before := hits.Load()
+	for i := 0; i < 4; i++ { // more passive scans than RemovalMisses
+		l.h.scanN(tg.ID, 1)
+	}
+	if hits.Load() != before {
+		t.Errorf("a normal scan probed after the one-off active scan (%d -> %d)", before, hits.Load())
+	}
+	if f := l.findingFor("default-page", "www.example.test"); f == nil {
+		t.Error("passive scans resolved a finding they could not check")
 	}
 }
 
@@ -364,19 +414,19 @@ func TestBucketChecks(t *testing.T) {
 	l := newWebLab(t)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/s3/open-bkt/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `<?xml version="1.0"?><ListBucketResult><Name>open-bkt</Name></ListBucketResult>`)
+		_, _ = fmt.Fprint(w, `<?xml version="1.0"?><ListBucketResult><Name>open-bkt</Name></ListBucketResult>`)
 	})
 	mux.HandleFunc("/s3/gone-bkt/", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(404)
-		fmt.Fprint(w, `<Error><Code>NoSuchBucket</Code></Error>`)
+		_, _ = fmt.Fprint(w, `<Error><Code>NoSuchBucket</Code></Error>`)
 	})
 	mux.HandleFunc("/s3/private-bkt/", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(403)
-		fmt.Fprint(w, `<Error><Code>AccessDenied</Code></Error>`)
+		_, _ = fmt.Fprint(w, `<Error><Code>AccessDenied</Code></Error>`)
 	})
 	mux.HandleFunc("/gcs/files.example.test/", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(404)
-		fmt.Fprint(w, `<Error><Code>NoSuchBucket</Code></Error>`)
+		_, _ = fmt.Fprint(w, `<Error><Code>NoSuchBucket</Code></Error>`)
 	})
 	bs := httptest.NewServer(mux)
 	defer bs.Close()

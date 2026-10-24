@@ -124,8 +124,22 @@ func (s *Server) healthView(w http.ResponseWriter, r *http.Request, sess *Sessio
 	}
 	s.render(w, r, sess, "health", http.StatusOK, map[string]any{
 		"Title": "System health", "Nav": "health", "Groups": groups, "Counts": counts, "Sys": s.eng.SystemInfo(),
-		"Log": log, "LogConn": conn, "LogFailed": failed, "LogOpts": opts,
+		"Log": log, "LogConn": conn, "LogFailed": failed, "LogOpts": opts, "CanStop": s.stop != nil,
 	})
+}
+
+// stopAgent shuts down an agent started interactively (its console may be hidden).
+// Under a service manager there is no stop hook: use the service controls instead.
+func (s *Server) stopAgent(w http.ResponseWriter, r *http.Request, sess *Session) {
+	if s.stop == nil {
+		s.renderError(w, r, sess, http.StatusConflict, "Cannot stop from here",
+			"This agent runs as a service. Stop it with the service manager or: easm-agent -service stop")
+		return
+	}
+	s.audit(sess, r, "agent.stop", "", "from the web interface")
+	s.renderError(w, r, sess, http.StatusOK, "Agent stopped",
+		"The EASM Agent is shutting down. Start the program again to use the web interface.")
+	s.stop()
 }
 
 func (s *Server) healthCheck(w http.ResponseWriter, r *http.Request, sess *Session) {

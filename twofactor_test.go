@@ -112,7 +112,7 @@ func TestTwoFactorFlow(t *testing.T) {
 		if tk == nil {
 			t.Fatalf("no 2FA prompt: %d", c)
 		}
-		c, _, r = nb.postRaw("/login/2fa", url.Values{"csrf": {pre}, "ticket": {tk[1]}, "code": {code}})
+		c, _, _ = nb.postRaw("/login/2fa", url.Values{"csrf": {pre}, "ticket": {tk[1]}, "code": {code}})
 		if c == 303 {
 			if c2, _, _ := nb.get("/findings"); c2 != 200 {
 				t.Fatalf("signed in but cannot browse: %d", c2)
