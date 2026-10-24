@@ -1,0 +1,34 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  security-checks:
+    name: Automated Security Scan
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Run Gitleaks Secret Scanning
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run Dependency Vulnerability Check
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript, python, go, csharp, java, cpp # Change this to match your project language (e.g., python, java, csharp, go)
+
+      - name: Perform CodeQL Analysis (SAST)
+        uses: github/codeql-action/analyze@v3
