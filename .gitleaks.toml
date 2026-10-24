@@ -1,0 +1,16 @@
+# Gitleaks: the default rules, minus reviewed false positives (none of these is a credential).
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Placeholder API keys in Go tests (exact values only, so a real key in a test is still caught)"
+regexes = [
+  '''^SHODANKEYSHODANKEYSHODANKEY(1234|123456)$''',   # detail_test.go, persist_test.go
+  '''^SHODAN-KEY-0123456789$''',                       # intel_test.go
+  '''^SHODAN-SECRET-KEY-98765$''',                     # web_test.go
+  '''^censys-pat-abcdef123456$''',                     # intel_test.go
+  '''^vt-key-abcdef123456$''',                         # intel_test.go, web_test.go
+  '''^TOPSECRETKEY123456$''',                          # intel_test.go
+  '''^ATTACKER-KEY-123456$''',                         # web_test.go
+  '''^(hibp-key|gh-token)-123456$''',                  # discover_test.go
+]
