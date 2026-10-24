@@ -1,12 +1,14 @@
 # Security Policy
 
 ## Supported Versions
-| Version | Supported          |
-| ------- | ------------------ |
-| 1.0.x   | :white_check_mark: |
+
+The project is in early development and has no tagged releases yet. Security fixes are applied to the `main` branch.
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability within this project, please send an email to **jason12345@duck.com**. All security vulnerabilities will be promptly addressed.
+Please report vulnerabilities privately, not through public issues:
 
-Please do not report security vulnerabilities through public GitHub issues.
+- Use GitHub's **Report a vulnerability** button on the repository's Security tab (private vulnerability reporting), or
+- Email **jason12345@duck.com**.
+
+Please include steps to reproduce and the affected version or commit. Reports will be acknowledged and addressed promptly.
