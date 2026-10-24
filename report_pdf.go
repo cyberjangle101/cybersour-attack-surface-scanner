@@ -59,9 +59,9 @@ func RenderReportPDF(rep *Report, agent string) ([]byte, error) {
 	p := fpdf.New("P", "mm", "A4", "")
 	p.SetMargins(pdfMargin, pdfMargin, pdfMargin)
 	p.SetAutoPageBreak(false, 0)
-	p.SetTitle("External attack surface report: "+rep.Scope, false)
-	p.SetAuthor("EASM Agent "+agent, false)
-	p.SetCreator("EASM Agent", false)
+	p.SetTitle("External attack surface report: "+rep.Heading(), true)
+	p.SetAuthor(rep.PreparedBy, true)
+	p.SetCreator("EASM Agent "+agent, false)
 	p.SetCreationDate(rep.Generated)
 	p.AliasNbPages("{nb}")
 	d := &pdfDoc{p: p, tr: p.UnicodeTranslatorFromDescriptor("")}
@@ -69,7 +69,7 @@ func RenderReportPDF(rep *Report, agent string) ([]byte, error) {
 		p.SetY(-12)
 		p.SetFont("Helvetica", "", 8)
 		d.color(pdfMuted)
-		p.CellFormat(pdfWidth/2, 5, d.tr("EASM Agent "+agent+" · "+rep.Scope), "", 0, "L", false, 0, "")
+		p.CellFormat(pdfWidth/2, 5, d.tr(clip("EASM Agent "+agent+" · "+rep.Heading(), 70)), "", 0, "L", false, 0, "")
 		p.CellFormat(pdfWidth/2, 5, fmt.Sprintf("Page %d of {nb}", p.PageNo()), "", 0, "R", false, 0, "")
 	})
 
@@ -104,20 +104,27 @@ func (d *pdfDoc) ensure(h float64) {
 func (d *pdfDoc) title(rep *Report) {
 	p := d.p
 	d.fill(pdfNavy)
-	p.Rect(0, 0, 210, 34, "F")
-	p.SetXY(pdfMargin, 9)
+	p.Rect(0, 0, 210, 46, "F")
+	p.SetXY(pdfMargin, 7)
 	d.color(rgb{255, 255, 255})
-	p.SetFont("Helvetica", "B", 22)
-	p.Cell(pdfWidth, 10, "External Attack Surface Report")
-	p.SetXY(pdfMargin, 20)
-	p.SetFont("Helvetica", "", 11)
-	p.Cell(pdfWidth, 6, d.tr(fmt.Sprintf("%s  ·  last %s  ·  generated %s", rep.Scope, periodWords(rep.Days), rep.Generated.Format("2006-01-02 15:04 MST"))))
+	p.SetFont("Helvetica", "", 10)
+	p.Cell(pdfWidth, 5, "External Attack Surface Report")
+	// Who the report belongs to comes first and largest.
+	p.SetXY(pdfMargin, 13)
+	p.SetFont("Helvetica", "B", 20)
+	p.Cell(pdfWidth, 10, d.tr(clip(rep.Heading(), 48)))
+	p.SetXY(pdfMargin, 24)
+	p.SetFont("Helvetica", "", 10)
+	p.Cell(pdfWidth, 5, d.tr(clip("Domains: "+rep.DomainList(), 110)))
+	p.SetXY(pdfMargin, 30)
+	p.Cell(pdfWidth, 5, d.tr(fmt.Sprintf("Last %s  ·  generated %s  ·  prepared by %s",
+		periodWords(rep.Days), rep.Generated.Format("2006-01-02 15:04 MST"), clip(rep.PreparedBy, 60))))
 	if rep.Filter.Sev != nil {
-		p.SetXY(pdfMargin, 27)
+		p.SetXY(pdfMargin, 37)
 		p.SetFont("Helvetica", "I", 9)
 		p.Cell(pdfWidth, 5, d.tr("Detail sections show: "+rep.Filter.Label()))
 	}
-	p.SetY(40)
+	p.SetY(52)
 }
 
 func periodWords(days int) string {

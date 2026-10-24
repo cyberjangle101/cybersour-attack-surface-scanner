@@ -163,6 +163,10 @@ func (s *Scanner) scanTarget(ctx context.Context, t *Target) error {
 	if s.force {
 		log.Info("refresh requested: saved exposure answers will be ignored")
 	}
+	if s.store.TakeActiveOnce(root) && !s.cfg.Active.Enabled {
+		s.cfg.Active.Enabled = true // this scan only: the config is rebuilt for every scan
+		log.Info("active checks requested for this scan")
+	}
 
 	baselineAt, baselined, err := s.store.getMeta("baselined:" + root)
 	_ = baselineAt

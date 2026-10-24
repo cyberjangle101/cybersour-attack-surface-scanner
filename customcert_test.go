@@ -79,9 +79,7 @@ func TestUploadedCertificateIsServedAndPersisted(t *testing.T) {
 	if err != nil || strings.Contains(string(sealed), "PRIVATE KEY") || len(sealed) < 40 {
 		t.Errorf("sealed key file looks wrong: %v %q", err, sealed)
 	}
-	if fi, _ := os.Stat(filepath.Join(dir, customKeyFile)); fi.Mode().Perm()&0o077 != 0 {
-		t.Error("sealed key file must be private to the owner")
-	}
+	assertOwnerOnly(t, filepath.Join(dir, customKeyFile), "sealed key file")
 
 	// a restart keeps serving it (same master key)
 	k2, err := newCertKeeper(dir, "127.0.0.1:8080", nil, nil)

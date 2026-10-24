@@ -393,6 +393,22 @@ func (s *Store) TakeRefresh(domain string) bool {
 	return true
 }
 
+// SetActiveOnce asks for the next scan of a domain to run the active checks even
+// when they are switched off in Settings (the "Scan now with active checks" button).
+func (s *Store) SetActiveOnce(domain string) error {
+	return s.setMeta("active:"+domain, "1")
+}
+
+// TakeActiveOnce reports (and clears) the one-shot active-checks request for a domain.
+func (s *Store) TakeActiveOnce(domain string) bool {
+	v, ok, err := s.getMeta("active:" + domain)
+	if err != nil || !ok || v == "" {
+		return false
+	}
+	_ = s.setMeta("active:"+domain, "")
+	return true
+}
+
 // FindUserFold finds an account by name ignoring case (directory names are case-insensitive).
 func (s *Store) FindUserFold(name string) (*User, error) {
 	var id int64

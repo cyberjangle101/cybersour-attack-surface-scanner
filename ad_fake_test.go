@@ -281,7 +281,7 @@ func (f *fakeAD) search(c net.Conn, id int64, op *ber.Packet) {
 			want = "\x00" // inconsistent filter: match nothing
 		}
 		for _, u := range f.users {
-			if (strings.ToLower(u.Sam) == want || strings.ToLower(u.UPN) == want) && !(u.Disabled && strings.Contains(flt, "userAccountControl")) {
+			if (strings.ToLower(u.Sam) == want || strings.ToLower(u.UPN) == want) && (!u.Disabled || !strings.Contains(flt, "userAccountControl")) {
 				out = append(out, entry(id, u.DN, map[string]string{"sAMAccountName": u.Sam, "userPrincipalName": u.UPN}))
 			}
 		}

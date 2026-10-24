@@ -42,6 +42,9 @@ type Report struct {
 	Since          time.Time       `json:"since"`
 	Days           int             `json:"days"`
 	Scope          string          `json:"scope"`
+	Organisation   string          `json:"organisation,omitempty"` // Settings → Organisation name
+	Domains        []string        `json:"domains"`                // the monitored domains this report covers
+	PreparedBy     string          `json:"prepared_by"`            // who asked for it (see PreparedBy)
 	Targets        []TargetSummary `json:"targets"`
 	Findings       []Finding       `json:"-"` // exported through MarshalJSON as apiFinding
 	AckedFindings  int             `json:"accepted_findings"`
@@ -69,6 +72,39 @@ func (r Report) MarshalJSON() ([]byte, error) {
 		Findings []apiFinding `json:"findings"`
 	}{plain: plain(r), Findings: apiFindings(r.Findings)}
 	return json.Marshal(out)
+}
+
+// preparedByAgent is the author of reports nobody asked for in person (scheduled digests).
+const preparedByAgent = "EASM Agent (scheduled digest)"
+
+// PreparedBy names the person a report was generated for, as shown in its header.
+func PreparedBy(sess *Session) string {
+	if sess == nil || sess.Username == "" {
+		return preparedByAgent
+	}
+	if sess.Role == "" {
+		return sess.Username
+	}
+	return sess.Username + " (" + sess.Role + ")"
+}
+
+// Heading is who the report belongs to: the organisation name when set, else the domain(s).
+func (r *Report) Heading() string {
+	switch {
+	case r.Organisation != "":
+		return r.Organisation
+	case len(r.Domains) == 1:
+		return r.Domains[0]
+	}
+	return r.Scope
+}
+
+// DomainList is the covered domains for a header line ("none yet" when empty).
+func (r *Report) DomainList() string {
+	if len(r.Domains) == 0 {
+		return "none yet"
+	}
+	return strings.Join(r.Domains, ", ")
 }
 
 // BuildReport assembles everything the report page, exports and digest email need.
@@ -122,7 +158,12 @@ func BuildReportOpts(st *Store, root string, since time.Time, invLimit int, opts
 			ID: t.ID, Domain: t.Domain, Hosts: hostCounts[t.Domain], NewHosts: newHosts[t.Domain],
 			OpenFindings: findCounts[t.Domain], Status: t.LastStatus, LastScan: t.LastEnd, Baselined: t.Baselined(), Enabled: t.Enabled,
 		})
+		rep.Domains = append(rep.Domains, t.Domain)
 	}
+	if set, err := st.LoadSettings(); err == nil {
+		rep.Organisation = set.OrgName
+	}
+	rep.PreparedBy = preparedByAgent // callers acting for a signed-in person replace it (PreparedBy)
 	all, err := st.ListFindings(root, "")
 	if err != nil {
 		return nil, err
@@ -198,8 +239,9 @@ type digestData struct {
 }
 
 const digestHTML = `<!doctype html><html><body style="font-family:Segoe UI,Arial,sans-serif;font-size:14px;color:#1f2933">
-<h2 style="margin:0 0 4px 0">EASM report: {{.Scope}}</h2>
-<p style="margin:0 0 16px 0;color:#52606d">{{.Period}} &middot; generated {{.Generated}} &middot; agent {{.Agent}}</p>
+<h2 style="margin:0 0 4px 0">EASM report: {{.Report.Heading}}</h2>
+<p style="margin:0 0 4px 0;color:#1f2933">Domains: {{.Report.DomainList}}</p>
+<p style="margin:0 0 16px 0;color:#52606d">{{.Period}} &middot; generated {{.Generated}} &middot; prepared by {{.Report.PreparedBy}} &middot; agent {{.Agent}}</p>
 <table cellpadding="6" cellspacing="0" style="border-collapse:collapse;margin-bottom:18px">
 <tr style="background:#f0f4f8"><th align="left" style="border:1px solid #d9e2ec">Target</th><th align="right" style="border:1px solid #d9e2ec">Hosts</th><th align="right" style="border:1px solid #d9e2ec">New hosts</th><th align="right" style="border:1px solid #d9e2ec">Open findings</th><th align="left" style="border:1px solid #d9e2ec">Last scan</th></tr>
 {{range .Report.Targets}}<tr><td style="border:1px solid #d9e2ec">{{.Domain}}</td><td align="right" style="border:1px solid #d9e2ec">{{.Hosts}}</td><td align="right" style="border:1px solid #d9e2ec">{{.NewHosts}}</td><td align="right" style="border:1px solid #d9e2ec">{{.FindingTotal}}</td><td style="border:1px solid #d9e2ec">{{.LastScan}}</td></tr>
@@ -249,7 +291,8 @@ func renderDigest(rep *Report, cfg *Config) (subject, plain, htmlBody string) {
 		cfg.SMTP.SubjectPrefix, d.TotalHosts, d.TotalFindings, len(rep.Changes), rep.Days)
 
 	var pb bytes.Buffer
-	_, _ = fmt.Fprintf(&pb, "EASM report: %s\n%s | generated %s | agent %s\n\n", rep.Scope, d.Period, d.Generated, agent)
+	_, _ = fmt.Fprintf(&pb, "EASM report: %s\nDomains: %s\n%s | generated %s | prepared by %s | agent %s\n\n",
+		rep.Heading(), rep.DomainList(), d.Period, d.Generated, rep.PreparedBy, agent)
 	w := tabwriter.NewWriter(&pb, 0, 4, 2, ' ', 0)
 	_, _ = fmt.Fprintln(w, "TARGET\tHOSTS\tNEW\tOPEN FINDINGS\tLAST SCAN")
 	for _, t := range rep.Targets {

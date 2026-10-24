@@ -77,7 +77,7 @@ func (f *fakeDNS) answer(m *dns.Msg, name string, qtype uint16, depth int) {
 	if !exists { // wildcard: *.parent answers for any missing child
 		if i := strings.Index(name, "."); i > 0 {
 			if wr, ok := f.rrs["*."+name[i+1:]]; ok {
-				rrs, exists = wr, true
+				exists = true
 				cp := make([]dns.RR, len(wr))
 				for j, rr := range wr {
 					cp[j] = dns.Copy(rr)
@@ -197,7 +197,7 @@ func newFakeSources(t testing.TB) *fakeSources {
 		root := r.URL.Query().Get("q")
 		for _, h := range f.ht {
 			if strings.HasSuffix(h, root) {
-				fmt.Fprintf(w, "%s,198.18.0.1\n", h)
+				_, _ = fmt.Fprintf(w, "%s,198.18.0.1\n", h)
 			}
 		}
 	})
@@ -314,7 +314,7 @@ func (s *fakeSMTP) restart(t testing.TB) {
 func (s *fakeSMTP) port() int {
 	_, p, _ := net.SplitHostPort(s.addr)
 	var n int
-	fmt.Sscan(p, &n)
+	_, _ = fmt.Sscan(p, &n)
 	return n
 }
 
@@ -326,11 +326,11 @@ func (s *fakeSMTP) all() []string {
 }
 
 func (s *fakeSMTP) handle(c net.Conn) {
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	_ = c.SetDeadline(time.Now().Add(20 * time.Second))
-	var conn net.Conn = c
+	conn := c
 	r, w := bufio.NewReader(conn), conn
-	say := func(l string) { fmt.Fprintf(w, "%s\r\n", l) }
+	say := func(l string) { _, _ = fmt.Fprintf(w, "%s\r\n", l) }
 	say("220 fake ESMTP")
 	isTLS := s.implicit
 	for {
@@ -341,11 +341,11 @@ func (s *fakeSMTP) handle(c net.Conn) {
 		cmd := strings.ToUpper(strings.TrimSpace(line))
 		switch {
 		case strings.HasPrefix(cmd, "EHLO"), strings.HasPrefix(cmd, "HELO"):
-			fmt.Fprint(w, "250-fake\r\n")
+			_, _ = fmt.Fprint(w, "250-fake\r\n")
 			if s.tlsCfg != nil && !isTLS {
-				fmt.Fprint(w, "250-STARTTLS\r\n")
+				_, _ = fmt.Fprint(w, "250-STARTTLS\r\n")
 			}
-			fmt.Fprint(w, "250 AUTH PLAIN\r\n")
+			_, _ = fmt.Fprint(w, "250 AUTH PLAIN\r\n")
 		case cmd == "STARTTLS":
 			say("220 go ahead")
 			tc := tls.Server(conn, s.tlsCfg)
@@ -486,6 +486,7 @@ func newHarness(t testing.TB) *harness {
 	h := &harness{t: t, dir: dir, store: store, vault: vault, log: log,
 		eng: NewEngine(store, vault, log), dns: newFakeDNS(t), src: newFakeSources(t), smtp: newFakeSMTP(t, nil), intel: newFakeIntel(t)}
 	h.eng.intelURLs = func() *intelURLs { u := h.intel.urls(); return &u }
+	h.eng.healthEvery = 0 // automatic connector checks would reach the real internet
 	h.eng.newScanner = func(cfg *Config, res *Resolver) *Scanner {
 		sc := NewScanner(cfg, log, store, res)
 		sc.disc.urls = h.src.urls()

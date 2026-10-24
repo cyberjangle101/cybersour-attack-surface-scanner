@@ -4,6 +4,13 @@
 <form method="post" action="/settings" class="settings">
   <input type="hidden" name="csrf" value="{{.CSRF}}">
 
+  <section class="card" id="org">
+    <h2>Organisation</h2>
+    <div class="grid">
+      <label class="wide">Organisation name <input name="org_name" value="{{.S.OrgName}}" maxlength="120" autocomplete="organization" placeholder="e.g. Acme Ltd"><span class="hint">Shown at the top of every report, with the domains it covers and who prepared it.</span></label>
+    </div>
+  </section>
+
   <section class="card">
     <h2>Scanning schedule</h2>
     <div class="grid">

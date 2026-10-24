@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -56,15 +57,15 @@ func platformDataDir(goos string, env func(string) string, euid int, home func()
 		if v := env("ProgramData"); v != "" {
 			return filepath.Join(v, dataDirName), nil
 		}
-	default:
+	default: // Unix paths: built with path, not filepath, so the result is right whatever OS computes it
 		if euid == 0 {
 			return "/var/lib/easm-agent", nil
 		}
-		if v := env("XDG_DATA_HOME"); v != "" && filepath.IsAbs(v) {
-			return filepath.Join(v, "easm-agent"), nil
+		if v := env("XDG_DATA_HOME"); v != "" && path.IsAbs(v) {
+			return path.Join(v, "easm-agent"), nil
 		}
 		if h, err := home(); err == nil && h != "" {
-			return filepath.Join(h, ".local", "share", "easm-agent"), nil
+			return path.Join(h, ".local", "share", "easm-agent"), nil
 		}
 	}
 	return "", errors.New("cannot work out a data folder for this account; start the agent with -data-dir <folder>")

@@ -17,6 +17,8 @@ data_dir: ""                  # database, encryption key and log live here (defa
 # allowed_hosts: ["easm.internal.example"]
 
 no_passphrase: false          # true = first start creates the encryption key without a passphrase (not recommended)
+no_browser: false             # true = do not open the web interface in the browser at start-up
+keep_console: false           # Windows: true = keep the console window visible after start-up
 secure_cookies: false          # set true when a TLS-terminating reverse proxy sits in front
 
 logging:

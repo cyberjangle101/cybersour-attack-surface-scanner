@@ -1,0 +1,16 @@
+# Gitleaks fingerprints that are known false positives. Add an entry only with a reason.
+#
+# Commit 44d862b: made-up Shodan, Censys, VirusTotal and HIBP keys in unit-test fixtures
+# (readable placeholders such as a service name followed by 0123456789). Tests use them to
+# check that keys are sealed, redacted from logs and never shown back. None is a real credential.
+44d862b79ebe40018888830dfb010b11d34fdee8:detail_test.go:generic-api-key:164
+44d862b79ebe40018888830dfb010b11d34fdee8:persist_test.go:generic-api-key:37
+44d862b79ebe40018888830dfb010b11d34fdee8:discover_test.go:generic-api-key:75
+44d862b79ebe40018888830dfb010b11d34fdee8:intel_test.go:generic-api-key:231
+44d862b79ebe40018888830dfb010b11d34fdee8:intel_test.go:generic-api-key:236
+44d862b79ebe40018888830dfb010b11d34fdee8:intel_test.go:generic-api-key:286
+44d862b79ebe40018888830dfb010b11d34fdee8:intel_test.go:generic-api-key:337
+44d862b79ebe40018888830dfb010b11d34fdee8:intel_test.go:generic-api-key:340
+44d862b79ebe40018888830dfb010b11d34fdee8:web_test.go:generic-api-key:800
+44d862b79ebe40018888830dfb010b11d34fdee8:web_test.go:generic-api-key:830
+44d862b79ebe40018888830dfb010b11d34fdee8:web_test.go:generic-api-key:884

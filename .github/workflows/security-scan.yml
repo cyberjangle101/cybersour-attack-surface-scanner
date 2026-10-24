@@ -43,6 +43,22 @@ jobs:
         with:
           fail-on-severity: high
 
+  sast:
+    name: Static analysis (Semgrep)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    # Semgrep's native Windows build cannot run these rules, so the SAST gate runs here on Linux.
+    container: semgrep/semgrep:1.182.1
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run Semgrep
+        # Explicit rulesets: "--config auto" only works with usage metrics switched on.
+        run: >-
+          semgrep scan --error --metrics=off
+          --config p/default --config p/golang --config p/secrets --config p/owasp-top-ten
+          --exclude web/static .
+
   codeql:
     name: CodeQL analysis
     runs-on: ubuntu-latest
