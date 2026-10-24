@@ -66,7 +66,7 @@ func takeShot(ctx context.Context, browser, scheme, host, ip string, port int, t
 	args = append(args, url)
 	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	cmd := exec.CommandContext(cctx, browser, args...) //nolint:gosec // the browser path is an administrator setting; arguments are fixed apart from a vetted host name and address
+	cmd := exec.CommandContext(cctx, browser, args...) //nolint:gosec // the browser path is an administrator setting; arguments are fixed apart from a vetted host name and address // nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command -- no shell; administrator-set browser path
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil && cctx.Err() != nil {

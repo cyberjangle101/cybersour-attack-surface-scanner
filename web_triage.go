@@ -39,7 +39,7 @@ func (s *Server) auditAs(actor, kind string, r *http.Request, action, target, de
 
 // back sends the browser to the page it came from (a local path only) or the findings list.
 func back(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, safeNext(r.PostFormValue("next"), "/findings"), http.StatusSeeOther)
+	http.Redirect(w, r, safeNext(r.PostFormValue("next"), "/findings"), http.StatusSeeOther) // nosemgrep: go.lang.security.injection.open-redirect.open-redirect -- safeNext allows only same-site paths
 }
 
 // findingFromPath loads the finding named in the URL, or writes a 404.

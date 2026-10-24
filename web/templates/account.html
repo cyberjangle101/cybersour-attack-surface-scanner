@@ -4,7 +4,7 @@
   <h2>Change password</h2>
   <p class="muted">Signed in as <strong>{{.User}}</strong> ({{.RoleLabel}}).</p>
   {{if .Directory}}<p>Your password is managed in Active Directory, so it cannot be changed here.</p>{{else}}
-  <form method="post" action="/account/password">
+  <form method="post" action="/account/password"> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <label>Current password <input type="password" name="current" autocomplete="current-password" required></label>
     <label>New password <input type="password" name="password" autocomplete="new-password" minlength="10" required></label>
@@ -23,9 +23,9 @@
   {{if .Tokens}}<div class="scroll"><table>
     <thead><tr><th>Name</th><th>Starts with</th><th>Role</th><th>Expires</th><th>Last used</th><th></th></tr></thead>
     <tbody>{{range .Tokens}}<tr><td>{{.Name}}</td><td class="mono">{{.Prefix}}…</td><td>{{roleLabel .Role}}</td><td>{{if .Expires}}{{.Expires}}{{else}}never{{end}}</td><td>{{if .LastUsed}}{{.LastUsed}}{{else}}never{{end}}</td>
-      <td>{{if .Revoked}}revoked{{else}}<form method="post" action="/account/tokens/{{.ID}}/revoke"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn danger" type="submit">Revoke</button></form>{{end}}</td></tr>{{end}}</tbody>
+      <td>{{if .Revoked}}revoked{{else}}<form method="post" action="/account/tokens/{{.ID}}/revoke"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn danger" type="submit">Revoke</button></form>{{end}}</td></tr>{{end}}</tbody> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
   </table></div>{{end}}
-  <form method="post" action="/account/tokens" class="settings">
+  <form method="post" action="/account/tokens" class="settings"> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <div class="grid">
       <label>Name <input name="name" required maxlength="80" placeholder="SIEM export" autocomplete="off"></label>
@@ -40,7 +40,7 @@
   <div class="scroll"><table>
     <thead><tr><th>Owner</th><th>Name</th><th>Starts with</th><th>Role</th><th>Last used</th><th></th></tr></thead>
     <tbody>{{range .OtherTokens}}<tr><td>{{.Owner}}</td><td>{{.Name}}</td><td class="mono">{{.Prefix}}…</td><td>{{roleLabel .Role}}</td><td>{{if .LastUsed}}{{.LastUsed}}{{else}}never{{end}}</td>
-      <td>{{if .Revoked}}revoked{{else}}<form method="post" action="/account/tokens/{{.ID}}/revoke"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn danger" type="submit">Revoke</button></form>{{end}}</td></tr>{{end}}</tbody>
+      <td>{{if .Revoked}}revoked{{else}}<form method="post" action="/account/tokens/{{.ID}}/revoke"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn danger" type="submit">Revoke</button></form>{{end}}</td></tr>{{end}}</tbody> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
   </table></div>
 </section>{{end}}
 {{end}}

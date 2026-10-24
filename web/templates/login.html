@@ -2,7 +2,7 @@
 <div class="card narrow">
   <h1>Sign in</h1>
   {{if .Error}}<div class="flash bad">{{.Error}}</div>{{end}}
-  <form method="post" action="/login" autocomplete="on">
+  <form method="post" action="/login" autocomplete="on"> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
     <input type="hidden" name="csrf" value="{{.PreCSRF}}">
     <label>Username <input name="username" value="{{.Username}}" autocomplete="username" autofocus required></label>
     <label>Password <input type="password" name="password" autocomplete="current-password" required></label>

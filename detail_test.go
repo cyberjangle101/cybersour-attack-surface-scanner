@@ -22,6 +22,29 @@ func detailEnv(t *testing.T) (*webEnv, *browser) {
 	return e, b
 }
 
+// Links are plain strings, not template.URL, so html/template keeps real links intact but
+// still blocks a dangerous scheme if one ever reaches a cell or the href helper.
+func TestLinksKeepHTMLTemplateURLChecks(t *testing.T) {
+	e := newWebEnv(t)
+	tpl := e.web.tpl["asset"]
+	for _, c := range []struct {
+		cell dCell
+		want string
+	}{
+		{link("www.a.test", assetLink("domain", "www.a.test")), `href="/assets/view?id=www.a.test&amp;type=domain"`},
+		{dCell{T: "crt", Href: "https://crt.sh/?id=7", Ext: true}, `href="https://crt.sh/?id=7"`},
+		{link("x", "javascript:alert(1)"), `href="#ZgotmplZ"`},
+	} {
+		var b strings.Builder
+		if err := tpl.ExecuteTemplate(&b, "cell", c.cell); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(b.String(), c.want) {
+			t.Errorf("cell rendered %q, want it to contain %q", b.String(), c.want)
+		}
+	}
+}
+
 // The category tabs used to render as "?type%3dip" (html/template escaped the query), so every tab showed "All".
 func TestAssetTabsAreRealLinks(t *testing.T) {
 	_, b := detailEnv(t)

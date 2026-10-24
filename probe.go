@@ -174,7 +174,7 @@ func (p *Prober) handshake(ctx context.Context, host, ip string, port int, minV,
 	if err != nil {
 		return nil, err
 	}
-	cfg := &tls.Config{ServerName: host, InsecureSkipVerify: true, MinVersion: minV, MaxVersion: maxV} //nolint:gosec // the certificate is judged separately, below, so a bad one can be reported instead of failing the probe
+	cfg := &tls.Config{ServerName: host, InsecureSkipVerify: true, MinVersion: minV, MaxVersion: maxV} //nolint:gosec // the certificate is judged separately, below, so a bad one can be reported instead of failing the probe // nosemgrep: problem-based-packs.insecure-transport.go-stdlib.bypass-tls-verification.bypass-tls-verification -- intentional, see CLAUDE.md
 	c := tls.Client(raw, cfg)
 	_ = c.SetDeadline(time.Now().Add(p.cfg.Timeout))
 	if err := c.HandshakeContext(ctx); err != nil {
@@ -262,7 +262,7 @@ func (p *Prober) fetch(ctx context.Context, scheme, host, ip string, port int, p
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 			return p.dialer().DialContext(ctx, "tcp", p.addr(ip, port))
 		},
-		TLSClientConfig:       &tls.Config{ServerName: host, InsecureSkipVerify: true, MinVersion: tls.VersionTLS10}, //nolint:gosec // see handshake
+		TLSClientConfig:       &tls.Config{ServerName: host, InsecureSkipVerify: true, MinVersion: tls.VersionTLS10}, //nolint:gosec // see handshake // nosemgrep: problem-based-packs.insecure-transport.go-stdlib.bypass-tls-verification.bypass-tls-verification, problem-based-packs.insecure-transport.go-stdlib.disallow-old-tls-versions.disallow-old-tls-versions -- the prober must reach old and misconfigured servers to report them
 		DisableKeepAlives:     true,
 		TLSHandshakeTimeout:   p.cfg.Timeout,
 		ResponseHeaderTimeout: p.cfg.Timeout,

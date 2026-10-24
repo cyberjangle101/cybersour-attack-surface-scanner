@@ -1,17 +1,17 @@
 {{define "triage"}}{{with .F}}
 {{if eq .Status "ack"}}
   <div class="small muted">Accepted by {{.AckBy}}{{if .AckUntil}}, review {{.AckUntil}}{{end}}: {{.AckReason}}</div>
-  <form method="post" action="/findings/{{.ID}}/reopen" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="next" value="{{$.Next}}"><button class="btn small" type="submit">Reopen</button></form>
+  <form method="post" action="/findings/{{.ID}}/reopen" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="next" value="{{$.Next}}"><button class="btn small" type="submit">Reopen</button></form> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
 {{else}}
   <details class="triage"><summary class="btn small">Accept risk</summary>
-    <form method="post" action="/findings/{{.ID}}/ack" class="stack"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="next" value="{{$.Next}}">
+    <form method="post" action="/findings/{{.ID}}/ack" class="stack"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="next" value="{{$.Next}}"> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
       <label>Reason <input name="reason" required minlength="3" maxlength="500" placeholder="Why is this acceptable?"></label>
       <label>Review on <input type="date" name="until"></label>
       <button class="btn small" type="submit">Accept</button></form>
   </details>
 {{end}}
 <details class="triage"><summary class="btn small">Severity{{if .SevOverride}} (changed){{end}}</summary>
-  <form method="post" action="/findings/{{.ID}}/severity" class="stack"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="next" value="{{$.Next}}">
+  <form method="post" action="/findings/{{.ID}}/severity" class="stack"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="next" value="{{$.Next}}"> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
     <label>Set to <select name="severity"><option value="scanner">Scanner default ({{.ScanSev}})</option><option>critical</option><option>high</option><option>medium</option><option>low</option><option>info</option></select></label>
     <label>Reason <input name="reason" required minlength="3" maxlength="500"></label>
     <button class="btn small" type="submit">Save</button></form>

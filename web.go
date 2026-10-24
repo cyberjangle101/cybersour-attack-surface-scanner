@@ -117,8 +117,9 @@ func NewServer(store *Store, eng *Engine, log *slog.Logger, boot *Bootstrap) (*S
 		"asns":   joinInts,
 		"hasKey": func(m map[string]int, k string) int { return m[k] },
 		// href builds a link from a path and an already-encoded query. html/template would
-		// otherwise percent-encode the "=" and "&" inside a query placed after "?".
-		"href": func(path, query string, extra ...string) template.URL {
+		// otherwise percent-encode the "=" and "&" inside a query placed after "?". The result is
+		// a plain string so html/template still normalizes it and checks the scheme.
+		"href": func(path, query string, extra ...string) string {
 			if len(extra) > 0 {
 				if query != "" {
 					query += "&"
@@ -126,9 +127,9 @@ func NewServer(store *Store, eng *Engine, log *slog.Logger, boot *Bootstrap) (*S
 				query += strings.Join(extra, "&")
 			}
 			if query == "" {
-				return template.URL(path) //nolint:gosec // G203: path is a template literal and the query is server-encoded
+				return path
 			}
-			return template.URL(path + "?" + query) //nolint:gosec // G203: path is a template literal and the query is server-encoded
+			return path + "?" + query
 		},
 		"hint":  Hint,
 		"donut": donutSVG, "legend": legendHTML, "trend": trendSVG, "hbar": hbarSVG, "catBars": categoryBars, "assetBars": assetBars,
@@ -373,7 +374,7 @@ func (s *Server) newSession(w http.ResponseWriter, u *User) *Session {
 	}
 	s.sessions[tok] = sess
 	s.mu.Unlock()
-	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: tok, Path: "/", HttpOnly: true, Secure: s.secure,
+	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: tok, Path: "/", HttpOnly: true, Secure: s.secure, // nosemgrep: go.lang.security.audit.net.cookie-missing-secure.cookie-missing-secure -- Secure is on whenever the UI is served over TLS; plain-HTTP mode could not send it back
 		SameSite: http.SameSiteStrictMode, MaxAge: int(sessionIdle.Seconds())})
 	return sess
 }
@@ -538,7 +539,7 @@ func (s *Server) preCSRF(w http.ResponseWriter, r *http.Request) string {
 		return c.Value
 	}
 	tok := randToken(16)
-	http.SetCookie(w, &http.Cookie{Name: csrfCookie, Value: tok, Path: "/", HttpOnly: true, Secure: s.secure, SameSite: http.SameSiteStrictMode})
+	http.SetCookie(w, &http.Cookie{Name: csrfCookie, Value: tok, Path: "/", HttpOnly: true, Secure: s.secure, SameSite: http.SameSiteStrictMode}) // nosemgrep: go.lang.security.audit.net.cookie-missing-secure.cookie-missing-secure -- Secure follows TLS, see newSession
 	return tok
 }
 
@@ -726,7 +727,7 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request, sess *Session) {
 		delete(s.sessions, c.Value)
 		s.mu.Unlock()
 	}
-	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: s.secure, SameSite: http.SameSiteStrictMode})
+	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: s.secure, SameSite: http.SameSiteStrictMode}) // nosemgrep: go.lang.security.audit.net.cookie-missing-secure.cookie-missing-secure -- Secure follows TLS, see newSession
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
@@ -895,7 +896,7 @@ func (s *Server) targetAdd(w http.ResponseWriter, r *http.Request, sess *Session
 			if adv := s.scopeAdvice(t.Domain); adv != "" {
 				s.flash(sess, "warn", fmt.Sprintf("Now monitoring %s. Note: %s", t.Domain, adv))
 			}
-			http.Redirect(w, r, "/targets/"+strconv.FormatInt(id, 10), http.StatusSeeOther)
+			http.Redirect(w, r, "/targets/"+strconv.FormatInt(id, 10), http.StatusSeeOther) // nosemgrep: go.lang.security.injection.open-redirect.open-redirect -- fixed local path plus a database integer id
 			return
 		}
 	}

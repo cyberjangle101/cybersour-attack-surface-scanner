@@ -211,7 +211,7 @@ func rowCounts(db *sql.DB) (map[string]int, error) {
 	out := map[string]int{}
 	for _, n := range names {
 		var c int
-		if err := db.QueryRow( // nosemgrep: string-formatted-query -- table names come from sqlite_master and are identifier-quoted
+		if err := db.QueryRow( // nosemgrep: string-formatted-query, go.lang.security.audit.sqli.gosql-sqli.gosql-sqli -- table names come from sqlite_master and are identifier-quoted
 			`SELECT COUNT(*) FROM "` + strings.ReplaceAll(n, `"`, `""`) + `"`).Scan(&c); err != nil {
 			return nil, err
 		}

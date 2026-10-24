@@ -28,7 +28,7 @@
     </nav>
     <div class="who">
       <a href="/account" class="{{if eq .Nav "account"}}on{{end}}">{{.User}}</a>
-      <form method="post" action="/logout" class="inline"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="link" type="submit">Sign out</button></form>
+      <form method="post" action="/logout" class="inline"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="link" type="submit">Sign out</button></form> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
     </div>
   </div>
   {{if .Scanning}}<div class="scanbar"><div class="wrap">Scanning <strong>{{.Scanning}}</strong>…</div></div>{{end}}

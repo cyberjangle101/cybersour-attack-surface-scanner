@@ -4,6 +4,9 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    # Wait a week before proposing a newly published version, so a hijacked or broken release is caught first.
+    cooldown:
+      default-days: 7
   # Add this once go.mod exists:
   # - package-ecosystem: "gomod"
   #   directory: "/"

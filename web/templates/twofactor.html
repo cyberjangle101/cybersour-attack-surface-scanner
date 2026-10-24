@@ -15,7 +15,7 @@
 <section class="card">
   <p>Two-factor sign-in is <strong>on</strong>. You have {{.Left}} recovery code(s) left.</p>
   <h2>New recovery codes</h2>
-  <form method="post" action="/account/2fa/recovery" class="settings">
+  <form method="post" action="/account/2fa/recovery" class="settings"> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <div class="grid">
       <label>Your password <input type="password" name="current" autocomplete="current-password" required></label>
@@ -24,7 +24,7 @@
     <div class="actions"><button class="btn" type="submit">Make new codes</button></div>
   </form>
   <h2>Turn off</h2>
-  <form method="post" action="/account/2fa/disable" class="settings">
+  <form method="post" action="/account/2fa/disable" class="settings"> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <div class="grid">
       <label>Your password <input type="password" name="current" autocomplete="current-password" required></label>
@@ -44,7 +44,7 @@
   </ol>
   <p><img class="qr" src="{{.QR}}" width="220" height="220" alt="QR code for your authenticator app"></p>
   <p>Key: <strong class="mono">{{.Secret}}</strong></p>
-  <form method="post" action="/account/2fa/enable" class="settings">
+  <form method="post" action="/account/2fa/enable" class="settings"> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <label>Code from the app <input name="code" inputmode="numeric" autocomplete="one-time-code" required maxlength="10" autofocus></label>
     <div class="actions"><button class="btn primary" type="submit">Turn on</button></div>

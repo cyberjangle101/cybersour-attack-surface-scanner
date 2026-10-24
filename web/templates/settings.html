@@ -198,13 +198,13 @@
   {{with .Backup}}
   <p class="muted">A backup is one file holding a consistent copy of everything the agent stores: domains, settings, users, alert channels, findings and history. It stays <strong>encrypted</strong>. It can only be opened with <span class="mono">easm.key</span>, so keep that file (and its passphrase) somewhere separate and safe. Data folder in use: <span class="mono">{{.DataDir}}</span></p>
   <h3>Download now</h3>
-  <form method="post" action="/settings/backup/download" class="settings">
+  <form method="post" action="/settings/backup/download" class="settings"> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
     <input type="hidden" name="csrf" value="{{$.CSRF}}">
     <label class="check"><input type="checkbox" name="include_key" value="1" {{if not .KeyProtected}}disabled{{end}}> Include the key file{{if not .KeyProtected}} <span class="muted small">(unavailable: the key file has no passphrase)</span>{{else}} <span class="muted small">(it stays locked by your passphrase)</span>{{end}}</label>
     <div class="actions"><button class="btn primary" type="submit" data-busy="Preparing backup…">Download a backup</button></div>
   </form>
   <h3>Scheduled backups</h3>
-  <form method="post" action="/settings/backup" class="settings">
+  <form method="post" action="/settings/backup" class="settings"> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
     <input type="hidden" name="csrf" value="{{$.CSRF}}">
     <div class="grid">
       <label class="check"><input type="checkbox" name="enabled" value="1" {{if .Cfg.Enabled}}checked{{end}}> Back up automatically</label>
@@ -243,7 +243,7 @@
   {{end}}
   <h3>Install a certificate from a certificate authority</h3>
   <p class="muted small">Paste the PEM text, or choose the files. Include the intermediate certificates your CA sent (the full chain). The private key is stored encrypted with the agent's master key and never leaves this computer. The change applies to new connections at once.</p>
-  <form method="post" action="/settings/certificate" class="settings">
+  <form method="post" action="/settings/certificate" class="settings"> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
     <input type="hidden" name="csrf" value="{{$.CSRF}}">
     <label>Certificate chain (PEM)
       <textarea id="cert_pem" name="cert_pem" rows="6" class="mono small" spellcheck="false" placeholder="-----BEGIN CERTIFICATE-----"></textarea>
@@ -268,7 +268,7 @@
   {{if .Locked}}
   <p class="flash warn">This address is set on the command line or in the config file, so it cannot be changed here.</p>
   {{else}}
-  <form method="post" action="/settings/listen" class="settings">
+  <form method="post" action="/settings/listen" class="settings"> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
     <input type="hidden" name="csrf" value="{{$.CSRF}}">
     <div class="grid">
       <label>IP address or interface <input name="host" list="listen-choices" value="{{.Host}}" autocomplete="off"><span class="hint">An IP address, an interface name such as eth0, or * for every interface.</span></label>
@@ -286,8 +286,8 @@
   <h2>Test email</h2>
   <p class="muted">Save your settings first, then send a test message to the recipients above.</p>
   <div class="actions">
-    <form method="post" action="/settings/test-email" class="inline"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="btn" type="submit">Send test email</button></form>
-    <form method="post" action="/settings/digest-now" class="inline"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="btn" type="submit">Send report email now</button></form>
+    <form method="post" action="/settings/test-email" class="inline"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="btn" type="submit">Send test email</button></form> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
+    <form method="post" action="/settings/digest-now" class="inline"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="btn" type="submit">Send report email now</button></form> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
   </div>
 </section>
 {{end}}

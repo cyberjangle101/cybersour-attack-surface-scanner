@@ -13,7 +13,7 @@
   </table>
   <p class="muted small">The audit log keeps a record that the domain was deleted, and by whom. Exposure data for addresses that other domains also use is kept.</p>
   {{if eq .T.LastStatus "running"}}<div class="flash warn">A scan is running for this domain. Wait for it to finish, then delete.</div>{{else}}
-  <form method="post" action="/targets/{{.T.ID}}/delete" class="grid">
+  <form method="post" action="/targets/{{.T.ID}}/delete" class="grid"> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <label class="wide">Type <strong>{{.T.Domain}}</strong> to confirm <input name="confirm" autocomplete="off" spellcheck="false" required></label>
     <div class="wide"><button class="btn danger" type="submit">Delete permanently</button> <a class="btn" href="/targets">Cancel</a></div>

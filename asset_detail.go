@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"html/template"
 	"net"
 	"net/http"
 	"net/url"
@@ -39,8 +38,8 @@ func (e *Engine) ReverseDNS(ctx context.Context, ip string) (string, error) {
 
 type dCell struct {
 	T    string
-	Href template.URL
-	Ext  bool // external link
+	Href string // a plain string, so html/template still checks the URL scheme
+	Ext  bool   // external link
 	Mono bool
 	Cls  string // badge class
 }
@@ -66,15 +65,15 @@ type AssetDetail struct {
 	Shot                          string // URL of a stored screenshot, if any
 }
 
-func assetLink(typ, id string) template.URL {
+func assetLink(typ, id string) string {
 	v := url.Values{"type": {typ}, "id": {id}}
-	return template.URL("/assets/view?" + v.Encode()) //nolint:gosec // G203: query built with url.Values.Encode, fixed path
+	return "/assets/view?" + v.Encode()
 }
 
 // plain makes a table cell that is only text.
-func plain(s string) dCell                { return dCell{T: s} }
-func mono(s string) dCell                 { return dCell{T: s, Mono: true} }
-func link(s string, h template.URL) dCell { return dCell{T: s, Href: h} }
+func plain(s string) dCell   { return dCell{T: s} }
+func mono(s string) dCell    { return dCell{T: s, Mono: true} }
+func link(s, h string) dCell { return dCell{T: s, Href: h} }
 func orNA(s string) string {
 	if s == "" {
 		return "—"
@@ -196,7 +195,7 @@ func (s *Server) detailHost(ctx context.Context, d *AssetDetail, host string) er
 			if d.Facts[i].K == "Belongs to" {
 				for _, t := range ts {
 					if t.Domain == d.Facts[i].V.T {
-						d.Facts[i].V.Href = template.URL(fmt.Sprintf("/targets/%d", t.ID)) //nolint:gosec // G203: integer id
+						d.Facts[i].V.Href = fmt.Sprintf("/targets/%d", t.ID)
 					}
 				}
 			}
@@ -424,7 +423,7 @@ func (s *Server) detailCert(d *AssetDetail, key string) error {
 		dFact{"First seen by agent", plain(fmtTS(c.First))},
 		dFact{"Belongs to", plain(c.Root)})
 	if c.CrtShID != 0 {
-		d.Facts = append(d.Facts, dFact{"Public record", dCell{T: fmt.Sprintf("crt.sh entry %d", c.CrtShID), Href: template.URL(fmt.Sprintf("https://crt.sh/?id=%d", c.CrtShID)), Ext: true}}) //nolint:gosec // G203: integer id on a fixed https URL
+		d.Facts = append(d.Facts, dFact{"Public record", dCell{T: fmt.Sprintf("crt.sh entry %d", c.CrtShID), Href: fmt.Sprintf("https://crt.sh/?id=%d", c.CrtShID), Ext: true}})
 	}
 	nt := dTable{Title: "Names on the certificate", Note: "Wildcard names (*.) cover every sub-name one level below.", Cols: []string{"Name"}}
 	hosts := map[string]bool{}
@@ -500,7 +499,7 @@ func (s *Server) detailVuln(d *AssetDetail, cve string) error {
 	}
 	d.Intro = "A vulnerability that exposure-intelligence data associates with a monitored address. It is inferred from the software version shown in service banners, so confirm it is really exploitable."
 	d.Facts = append(d.Facts, dFact{"Identifier", mono(cve)},
-		dFact{"Details", dCell{T: "NIST National Vulnerability Database", Href: template.URL("https://nvd.nist.gov/vuln/detail/" + url.PathEscape(cve)), Ext: true}}) //nolint:gosec // G203: fixed https URL with a path-escaped CVE id
+		dFact{"Details", dCell{T: "NIST National Vulnerability Database", Href: "https://nvd.nist.gov/vuln/detail/" + url.PathEscape(cve), Ext: true}})
 	t := dTable{Title: "Affected addresses", Cols: []string{"Address", "Host names"}}
 	for _, ip := range ips {
 		var hs []string
@@ -634,5 +633,5 @@ func (s *Server) shotView(w http.ResponseWriter, r *http.Request, sess *Session)
 	w.Header().Set("Content-Type", "image/png")
 	w.Header().Set("Cache-Control", "private, max-age=300")
 	w.Header().Set("X-Screenshot-Taken", taken)
-	_, _ = w.Write(png)
+	_, _ = w.Write(png) // nosemgrep: go.lang.security.audit.xss.no-direct-write-to-responsewriter.no-direct-write-to-responsewriter -- stored PNG bytes served as image/png, never HTML
 }
