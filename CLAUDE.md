@@ -1,6 +1,6 @@
 # EASM Agent: working rules for Claude Code
 
-Go 1.23 module `easm-agent`: an External Attack Surface Management daemon for Windows and Linux.
+Go 1.26 module `easm-agent`: an External Attack Surface Management daemon for Windows and Linux.
 It has an embedded web UI and an AES-256-XTS encrypted SQLite database.
 Repo: cyberjangle101/cybersour-attack-surface-scanner. `main` is protected.
 
