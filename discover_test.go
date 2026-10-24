@@ -78,7 +78,7 @@ func newFakeLeaks(t *testing.T) *fakeLeaks {
 		f.mu.Lock()
 		defer f.mu.Unlock()
 		if r.Header.Get("hibp-api-key") != f.hibpKey {
-			http.Error(w, "no", 401)
+			http.Error(w, "no", http.StatusUnauthorized)
 			return
 		}
 		if f.hibpStatus != 0 {
@@ -93,7 +93,7 @@ func newFakeLeaks(t *testing.T) *fakeLeaks {
 	})
 	mux.HandleFunc("/hibp/subscription/status", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("hibp-api-key") != f.hibpKey {
-			http.Error(w, "no", 401)
+			http.Error(w, "no", http.StatusUnauthorized)
 			return
 		}
 		_, _ = w.Write([]byte(`{}`))
@@ -103,7 +103,7 @@ func newFakeLeaks(t *testing.T) *fakeLeaks {
 		defer f.mu.Unlock()
 		f.ghHits++
 		if r.Header.Get("Authorization") != f.ghAuth || r.Header.Get("X-GitHub-Api-Version") == "" {
-			http.Error(w, "no", 401)
+			http.Error(w, "no", http.StatusUnauthorized)
 			return
 		}
 		q := r.URL.Query().Get("q")
@@ -117,7 +117,7 @@ func newFakeLeaks(t *testing.T) *fakeLeaks {
 	})
 	mux.HandleFunc("/gh/rate_limit", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != f.ghAuth {
-			http.Error(w, "no", 401)
+			http.Error(w, "no", http.StatusUnauthorized)
 			return
 		}
 		_, _ = w.Write([]byte(`{}`))
@@ -225,8 +225,12 @@ func TestLeakedAccountsAndPublicCode(t *testing.T) {
 	f.gh["password"] = `[{"path":"deploy/.env","html_url":"https://github.com/acme/infra/blob/main/deploy/.env","repository":{"full_name":"acme/infra","private":false}},
 		{"path":"README.md","html_url":"https://github.com/acme/infra/blob/main/README.md","repository":{"full_name":"acme/infra","private":false}},
 		{"path":"x","html_url":"https://github.com/me/secret/blob/x","repository":{"full_name":"me/secret","private":true}}]`
-	h.eng.SetSecret(secretHIBP, f.hibpKey)
-	h.eng.SetSecret(secretGitHub, "gh-token-123456")
+	if err := h.eng.SetSecret(secretHIBP, f.hibpKey); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.eng.SetSecret(secretGitHub, "gh-token-123456"); err != nil {
+		t.Fatal(err)
+	}
 	st, _ := h.store.LoadSettings()
 	st.HIBPEnabled, st.GitHubEnabled = true, true
 	h.saveSettings(st)

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -380,6 +381,52 @@ func TestHealthChecksAndStatuses(t *testing.T) {
 	it, _ := h.eng.Health().Get("dns:" + cur.DNSResolvers[0])
 	if it.LastFail.IsZero() || !it.LastFail.After(it.LastOK) {
 		t.Errorf("dead resolver not reported: %+v", it)
+	}
+}
+
+// A failure persisted by the last session must not stay on the Health page after a
+// restart: the scheduler re-checks the connectors on its own, once, then waits.
+func TestHealthCheckedAutomaticallyAfterStart(t *testing.T) {
+	h := newHarness(t)
+	var probes atomic.Int32
+	h.eng.reachFn = func(string) func(context.Context) error {
+		return func(context.Context) error { probes.Add(1); return nil }
+	}
+	stale := NewHealthBoard()
+	stale.items["crtsh"] = &HealthItem{Name: "crtsh", LastFail: time.Now().Add(-time.Hour), LastError: "timeout from last session", FailCount: 1}
+	h.eng.Health().Load(stale.Marshal()) // as restored from the database at start-up
+	h.eng.healthEvery = time.Hour
+
+	h.eng.maybeHealthCheck(testCtx(t))
+	h.eng.wg.Wait()
+	h.eng.maybeHealthCheck(testCtx(t)) // within the interval: no second run
+	h.eng.wg.Wait()
+
+	cur, _ := h.store.LoadSettings()
+	for _, c := range Connectors(cur, nil) {
+		if c.ID != "crtsh" {
+			continue
+		}
+		it, seen := h.eng.Health().Get("crtsh")
+		if s, _ := c.Status(it, seen); s != "good" {
+			t.Errorf("stale failure still shown after the automatic check: %s %+v", s, it)
+		}
+	}
+	first := probes.Load()
+	if first == 0 {
+		t.Fatal("the automatic check did not run")
+	}
+	h.eng.maybeHealthCheck(testCtx(t))
+	h.eng.wg.Wait()
+	if probes.Load() != first {
+		t.Error("connectors were re-checked before the interval elapsed")
+	}
+	h.eng.healthEvery = 0
+	h.eng.lastHealth = time.Time{}
+	h.eng.maybeHealthCheck(testCtx(t))
+	h.eng.wg.Wait()
+	if probes.Load() != first {
+		t.Error("healthEvery=0 must disable automatic checks")
 	}
 }
 

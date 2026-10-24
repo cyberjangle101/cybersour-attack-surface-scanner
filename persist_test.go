@@ -57,7 +57,7 @@ func TestUserAndSecretsPersistEncrypted(t *testing.T) {
 
 	// "restart": reopen everything and log in again
 	st2, _, eng2 := open()
-	defer st2.Close()
+	defer func() { _ = st2.Close() }()
 	u, err := st2.GetUserByName("admin")
 	if err != nil || bcrypt.CompareHashAndPassword([]byte(u.Hash), []byte("correct horse battery")) != nil {
 		t.Fatalf("admin cannot sign in after restart: %v", err)
@@ -78,7 +78,7 @@ func TestLegacyPlainHashesAreUpgraded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st.Close()
+	defer func() { _ = st.Close() }()
 	hash, _ := hashPassword("correct horse battery")
 	if _, err := st.CreateUser("old", hash, "admin"); err != nil { // no vault yet: stored plain
 		t.Fatal(err)

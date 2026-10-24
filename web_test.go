@@ -56,7 +56,7 @@ func (b *browser) do(req *http.Request) (int, string, *http.Response) {
 	if err != nil {
 		b.t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(resp.Body)
 	return resp.StatusCode, string(body), resp
 }
@@ -388,6 +388,7 @@ func settingsForm(s Settings) url.Values {
 	v.Set("alert_immediate_severity", s.AlertImmediateSeverity)
 	v.Set("digest_frequency", s.DigestFrequency)
 	v.Set("public_url", s.PublicURL)
+	v.Set("org_name", s.OrgName)
 	v.Set("smtp_host", s.SMTPHost)
 	v.Set("smtp_security", s.SMTPSecurity)
 	v.Set("smtp_username", s.SMTPUsername)
@@ -498,7 +499,8 @@ func TestWebReportFindingsEventsAndExports(t *testing.T) {
 	}
 	// report page + exports
 	code, body, _ = b.get("/report?target=example.test&days=30")
-	if code != 200 || !strings.Contains(body, "Report: example.test") || !strings.Contains(body, "www.example.test") || !strings.Contains(body, "Open findings (1)") {
+	if code != 200 || !strings.Contains(body, "<h1>example.test</h1>") || !strings.Contains(body, "Domains: example.test") ||
+		!strings.Contains(body, "Prepared by admin (admin)") || !strings.Contains(body, "www.example.test") || !strings.Contains(body, "Open findings (1)") {
 		t.Errorf("report page: %d", code)
 	}
 	code, body, r := b.get("/report/inventory.csv?target=example.test")
@@ -528,7 +530,7 @@ func TestWebReportFindingsEventsAndExports(t *testing.T) {
 	if code, _, r = b.post("/findings/1/ack", url.Values{"next": {"/findings"}, "reason": {"vendor patch scheduled"}}); code != 303 || loc(r) != "/findings" {
 		t.Errorf("ack redirect: %d %s", code, loc(r))
 	}
-	if code, _, r = b.post("/findings/1/reopen", url.Values{"next": {"https://evil.example/"}}); loc(r) != "/findings" {
+	if _, _, r = b.post("/findings/1/reopen", url.Values{"next": {"https://evil.example/"}}); loc(r) != "/findings" {
 		t.Errorf("open redirect via next: %s", loc(r))
 	}
 	b.post("/findings/1/ack", url.Values{"next": {"//evil.example"}, "reason": {"vendor patch scheduled"}})

@@ -8,7 +8,12 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
+
+// maxOrgName is the longest organisation name accepted for the report header.
+const maxOrgName = 120
 
 // Settings are the global, GUI-editable options. They are stored as JSON in the
 // database; missing fields fall back to DefaultSettings so upgrades are safe.
@@ -32,6 +37,9 @@ type Settings struct {
 	RemovalMisses          int  // consecutive scans a record must be missing before it counts as removed
 	AlertTXT               bool
 	PublicURL              string
+
+	// OrgName is the organisation the reports are prepared for, shown at the top of every report.
+	OrgName string
 
 	// Reporting digest email
 	DigestFrequency string // off | daily | weekly
@@ -202,6 +210,15 @@ func (s *Settings) Normalize() error {
 		return errors.New("Digest frequency must be off, daily or weekly") //nolint:staticcheck // shown verbatim in the settings form
 	}
 
+	s.OrgName = strings.Join(strings.Fields(s.OrgName), " ")
+	if utf8.RuneCountInString(s.OrgName) > maxOrgName {
+		return fmt.Errorf("Organisation name: at most %d characters", maxOrgName) //nolint:staticcheck // shown verbatim in the settings form
+	}
+	for _, c := range s.OrgName {
+		if unicode.IsControl(c) || unicode.Is(unicode.Cf, c) { // Cf: bidi overrides could disguise the name in a report
+			return errors.New("Organisation name contains a control or formatting character") //nolint:staticcheck // shown verbatim in the settings form
+		}
+	}
 	if s.PublicURL = strings.TrimSpace(s.PublicURL); s.PublicURL != "" {
 		u, err := url.Parse(s.PublicURL)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {

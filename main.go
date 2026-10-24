@@ -34,9 +34,10 @@ type program struct {
 	srvDone  chan struct{}
 	addr     string
 
-	lmu    sync.Mutex // guards srv, srvDone and addr while the listen address is being changed
-	keeper *certKeeper
-	web    *Server
+	lmu      sync.Mutex // guards srv, srvDone and addr while the listen address is being changed
+	keeper   *certKeeper
+	web      *Server
+	stopOnce sync.Once
 }
 
 // Start opens the key and the encrypted database, starts the scheduler and the web server, and returns once they are running.
@@ -128,9 +129,49 @@ func (p *program) Start(service.Service) error {
 
 	go func() { defer close(p.engDone); eng.Run(ctx) }()
 	if service.Interactive() {
-		fmt.Printf("\nEASM Agent %s is running.\nOpen %s://%s in your browser. Press Ctrl-C to stop.\n\n", version, scheme, displayAddr(p.addr))
+		web.stop = p.stopInteractive
+		p.desktopStart(scheme + "://" + displayAddr(p.addr))
 	}
 	return nil
+}
+
+// desktopStart finishes an interactive start: it opens the web interface in the
+// default browser and, when the program has a console window of its own (it was
+// double-clicked on Windows), hides that window so the agent keeps running in the
+// background. Stop it from System health → Stop agent, or run it as a service.
+func (p *program) desktopStart(link string) {
+	fmt.Printf("\nEASM Agent %s is running at %s\n", version, link)
+	if !p.boot.NoBrowser {
+		if err := openBrowser(link); err != nil {
+			fmt.Printf("Open %s in your browser.\n", link)
+			p.log.Info("browser not opened", "reason", err)
+		}
+	}
+	if p.boot.KeepConsole || !ownsConsole() {
+		fmt.Print("Press Ctrl-C to stop.\n\n")
+		return
+	}
+	fmt.Print("This window will now hide; the agent keeps running in the background.\n" +
+		"To stop it, sign in as an administrator and use System health → Stop agent.\n\n")
+	go func() {
+		time.Sleep(3 * time.Second) // long enough to read the message
+		if hideConsole() {
+			p.log.Info("console hidden; the agent runs in the background")
+		}
+	}()
+}
+
+// stopInteractive shuts the agent down from the web interface (interactive runs
+// only, where no service manager or visible console can stop it). It returns at
+// once so the confirmation page is delivered, then stops and exits.
+func (p *program) stopInteractive() {
+	p.stopOnce.Do(func() {
+		go func() {
+			time.Sleep(time.Second)
+			_ = p.Stop(nil)
+			os.Exit(0)
+		}()
+	})
 }
 
 // scheme is "https" when the interface is served over TLS, otherwise "http".
@@ -345,6 +386,8 @@ func main() {
 		unprotect = flag.Bool("unprotect-key", false, "remove the passphrase protection from easm.key, then exit")
 		resetPW   = flag.String("reset-password", "", "set a new password for the named user, then exit")
 		noPass    = flag.Bool("no-passphrase", false, "first start only: create the encryption key without a passphrase (not recommended)")
+		noBrowser = flag.Bool("no-browser", false, "do not open the web interface in the browser at start-up")
+		keepCon   = flag.Bool("keep-console", false, "Windows: keep the console window visible instead of hiding it after start-up")
 		plainHTTP = flag.Bool("plain-http", false, "serve unencrypted HTTP instead of HTTPS with an automatic self-signed certificate")
 		restore   = flag.String("restore", "", "restore a backup .zip into the data folder (stop the agent first), then exit")
 		force     = flag.Bool("force", false, "with -restore: replace an existing database (the old one is kept alongside)")
@@ -375,6 +418,12 @@ func main() {
 	}
 	if *plainHTTP {
 		boot.PlainHTTP = true
+	}
+	if *noBrowser {
+		boot.NoBrowser = true
+	}
+	if *keepCon {
+		boot.KeepConsole = true
 	}
 	if *migrate {
 		if err := migrateCommand(); err != nil {

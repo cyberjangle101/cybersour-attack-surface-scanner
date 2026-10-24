@@ -30,6 +30,7 @@ func TestDeleteDomainRemovesEverything(t *testing.T) {
 	mustExec(`INSERT INTO web_shots(host,port,taken,png) VALUES('www.other.test',443,?,x'89504e47')`, now)
 	mustExec(`INSERT INTO suggestions(root,domain,via,detail,first_seen) VALUES('example.test','x.test','cert','d',?)`, now)
 	mustExec(`INSERT INTO meta(k,v) VALUES('refresh:example.test','1')`)
+	mustExec(`INSERT INTO meta(k,v) VALUES('active:example.test','1')`)
 
 	b := e.browser()
 	b.setup("admin", "correct horse battery")
@@ -59,11 +60,15 @@ func TestDeleteDomainRemovesEverything(t *testing.T) {
 		}
 	}
 	var n int
-	db.QueryRow(`SELECT COUNT(*) FROM web_shots WHERE host='www.example.test'`).Scan(&n)
+	if err := db.QueryRow(`SELECT COUNT(*) FROM web_shots WHERE host='www.example.test'`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
 	if n != 0 {
 		t.Error("screenshot of the deleted domain remains")
 	}
-	db.QueryRow(`SELECT COUNT(*) FROM meta WHERE k LIKE '%:example.test'`).Scan(&n)
+	if err := db.QueryRow(`SELECT COUNT(*) FROM meta WHERE k LIKE '%:example.test'`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
 	if n != 0 {
 		t.Error("meta keys of the deleted domain remain")
 	}
@@ -74,14 +79,18 @@ func TestDeleteDomainRemovesEverything(t *testing.T) {
 		`SELECT COUNT(*) FROM web_services WHERE root='other.test'`:  "web services",
 		`SELECT COUNT(*) FROM targets WHERE domain='other.test'`:     "target",
 	} {
-		db.QueryRow(q).Scan(&n)
+		if err := db.QueryRow(q).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
 		if n == 0 {
 			t.Errorf("deleting one domain removed the other domain's %s", what)
 		}
 	}
 	// the audit log records the deletion
 	var audited int
-	db.QueryRow(`SELECT COUNT(*) FROM audit WHERE action='target.delete' AND target='example.test'`).Scan(&audited)
+	if err := db.QueryRow(`SELECT COUNT(*) FROM audit WHERE action='target.delete' AND target='example.test'`).Scan(&audited); err != nil {
+		t.Fatal(err)
+	}
 	if audited != 1 {
 		t.Error("deletion was not audited")
 	}

@@ -25,9 +25,7 @@ func TestSelfSignedCertIsCreatedAndReused(t *testing.T) {
 			t.Errorf("certificate does not cover %s: %v", h, err)
 		}
 	}
-	if fi, err := os.Stat(filepath.Join(dir, selfSignedKeyFile)); err != nil || fi.Mode().Perm()&0o077 != 0 {
-		t.Errorf("TLS key must be private to the owner: %v %v", fi, err)
-	}
+	assertOwnerOnly(t, filepath.Join(dir, selfSignedKeyFile), "TLS key")
 	k2, err := newCertKeeper(dir, "127.0.0.1:8080", nil, nil)
 	if err != nil {
 		t.Fatal(err)

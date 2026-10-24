@@ -42,12 +42,22 @@ type Engine struct {
 	backing   atomic.Bool // a scheduled backup is being written
 	lastBkTry time.Time
 	dataDir   string // shown on the Health page so it is obvious where the database and key live
+
+	// healthEvery is how often the connectors are re-checked on their own, starting
+	// right after start-up so the Health page never shows the last session's stale
+	// failures. Zero turns automatic checks off (tests).
+	healthEvery time.Duration
+	lastHealth  time.Time
+	checking    atomic.Bool // an automatic health check is running
 }
+
+// defaultHealthEvery is the automatic connector re-check interval.
+const defaultHealthEvery = 6 * time.Hour
 
 // NewEngine creates the scheduler, restoring persisted connector health.
 func NewEngine(store *Store, vault *Vault, log *slog.Logger) *Engine {
 	e := &Engine{store: store, vault: vault, log: log, wake: make(chan struct{}, 1), health: NewHealthBoard(), started: time.Now(),
-		active: map[int64]string{}, progress: NewProgressBoard()}
+		active: map[int64]string{}, progress: NewProgressBoard(), healthEvery: defaultHealthEvery}
 	if v, ok, _ := store.getMeta("health"); ok {
 		e.health.Load(v)
 	}
@@ -320,6 +330,24 @@ func (e *Engine) housekeeping(ctx context.Context) {
 	e.expireAcceptances()
 	e.maybeDigest(ctx)
 	e.maybeBackup()
+	e.maybeHealthCheck(ctx)
+}
+
+// maybeHealthCheck probes the connectors in the background on the first pass
+// after start-up and every healthEvery after that, so the Health page reflects
+// this session rather than failures persisted from the last one.
+func (e *Engine) maybeHealthCheck(ctx context.Context) {
+	if e.healthEvery <= 0 || time.Since(e.lastHealth) < e.healthEvery || !e.checking.CompareAndSwap(false, true) {
+		return
+	}
+	e.lastHealth = time.Now()
+	e.wg.Add(1)
+	go func() {
+		defer e.wg.Done()
+		defer e.checking.Store(false)
+		e.RunHealthChecks(ctx)
+		e.log.Info("connector health checked")
+	}()
 }
 
 // auditRetentionDays is how long audit entries are kept (two years).

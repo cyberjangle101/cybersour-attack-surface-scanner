@@ -221,3 +221,23 @@ func FuzzWebQueries(f *testing.F) {
 		}
 	})
 }
+
+// FuzzBrowserCommand: whatever address reaches the browser launcher, only an
+// http(s) URL with a host is ever handed to the OS, as one argument.
+func FuzzBrowserCommand(f *testing.F) {
+	for _, s := range []string{"https://127.0.0.1:8080", "http://[::1]:8080", "file:///etc/passwd", "javascript:alert(1)",
+		"https://x\" & calc.exe", "https://a.example/?q=1 --flag", "\\\\host\\share", ""} {
+		f.Add(s)
+	}
+	desktop := func(string) string { return ":0" }
+	f.Fuzz(func(t *testing.T, raw string) {
+		cmd, err := browserCommand(raw, desktop)
+		if err != nil {
+			return
+		}
+		u, perr := url.Parse(cmd.Args[len(cmd.Args)-1])
+		if perr != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			t.Fatalf("%q reached the browser as %q", raw, cmd.Args[len(cmd.Args)-1])
+		}
+	})
+}

@@ -292,12 +292,15 @@ func (s *Server) apiSTIX(w http.ResponseWriter, r *http.Request, _ *apiWho) {
 	_ = json.NewEncoder(w).Encode(buildSTIX(apiFindings(fs)))
 }
 
-func (s *Server) apiReport(w http.ResponseWriter, r *http.Request, _ *apiWho) {
+func (s *Server) apiReport(w http.ResponseWriter, r *http.Request, who *apiWho) {
 	days := qInt(r, "days", 30, 1, 3650)
 	rep, err := BuildReport(s.store, r.URL.Query().Get("target"), time.Now().Add(-time.Duration(days)*24*time.Hour), 20000)
 	if err != nil {
 		apiError(w, http.StatusInternalServerError, "could not build the report")
 		return
+	}
+	if who != nil && who.User != nil {
+		rep.PreparedBy = PreparedBy(&Session{Username: who.User.Username, Role: who.Role}) + " via API"
 	}
 	apiJSON(w, rep)
 }
