@@ -125,6 +125,7 @@ func (s *Server) healthView(w http.ResponseWriter, r *http.Request, sess *Sessio
 	s.render(w, r, sess, "health", http.StatusOK, map[string]any{
 		"Title": "System health", "Nav": "health", "Groups": groups, "Counts": counts, "Sys": s.eng.SystemInfo(),
 		"Log": log, "LogConn": conn, "LogFailed": failed, "LogOpts": opts, "CanStop": s.stop != nil,
+		"Upd": s.eng.UpdateState(), "CanRestart": s.restart != nil,
 	})
 }
 

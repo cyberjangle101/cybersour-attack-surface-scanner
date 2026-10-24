@@ -1,0 +1,68 @@
+name: Release
+
+# Pushing a tag vX.Y.Z builds the binaries, signs their checksums and publishes a
+# GitHub release. Running agents find it with their update check and verify the
+# signature against the public key in release_key.go before installing anything.
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Build, sign and publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the release
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: stable # newest toolchain: release builds pick up stdlib security fixes
+          check-latest: true
+
+      - name: Version from the tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          echo "VERSION=${TAG#v}" >> "$GITHUB_ENV"
+          grep -q "v${TAG#v}" README.md || { echo "README.md does not mention v${TAG#v} (update What's new and Status first)"; exit 1; }
+
+      - name: Tests
+        run: go test -count=1 ./...
+
+      - name: Build
+        run: |
+          mkdir -p dist
+          for target in windows/amd64 linux/amd64 linux/arm64; do
+            os=${target%/*}; arch=${target#*/}; ext=""; [ "$os" = windows ] && ext=".exe"
+            CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath \
+              -ldflags "-s -w -X main.version=${VERSION}" -o "dist/easm-agent-${os}-${arch}${ext}" .
+          done
+
+      - name: Vulnerability scan of the binaries
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          go build -trimpath -ldflags "-X main.version=${VERSION}" -o /tmp/easm-agent-unstripped .
+          govulncheck -mode=binary /tmp/easm-agent-unstripped
+
+      - name: Checksums and signature
+        env:
+          EASM_RELEASE_SIGNING_KEY: ${{ secrets.EASM_RELEASE_SIGNING_KEY }}
+        run: |
+          if [ -z "$EASM_RELEASE_SIGNING_KEY" ]; then
+            echo "The EASM_RELEASE_SIGNING_KEY secret is not set; see RELEASING.md"; exit 1
+          fi
+          go run ./tools/release sums -version "$VERSION" -dir dist
+          go run ./tools/release sign -dir dist
+          go run ./tools/release verify -dir dist
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" dist/* --verify-tag --title "EASM Agent ${VERSION}" --generate-notes

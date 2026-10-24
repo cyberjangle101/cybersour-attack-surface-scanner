@@ -49,6 +49,13 @@ type Engine struct {
 	healthEvery time.Duration
 	lastHealth  time.Time
 	checking    atomic.Bool // an automatic health check is running
+
+	// Update checks (engine_update.go). updateEvery zero turns the daily check off (tests).
+	updateEvery time.Duration
+	lastUpdate  time.Time
+	updChecking atomic.Bool
+	updates     updateBoard
+	newUpdater  func() *Updater // test seam; nil means NewUpdater
 }
 
 // defaultHealthEvery is the automatic connector re-check interval.
@@ -57,7 +64,7 @@ const defaultHealthEvery = 6 * time.Hour
 // NewEngine creates the scheduler, restoring persisted connector health.
 func NewEngine(store *Store, vault *Vault, log *slog.Logger) *Engine {
 	e := &Engine{store: store, vault: vault, log: log, wake: make(chan struct{}, 1), health: NewHealthBoard(), started: time.Now(),
-		active: map[int64]string{}, progress: NewProgressBoard(), healthEvery: defaultHealthEvery}
+		active: map[int64]string{}, progress: NewProgressBoard(), healthEvery: defaultHealthEvery, updateEvery: defaultUpdateEvery}
 	if v, ok, _ := store.getMeta("health"); ok {
 		e.health.Load(v)
 	}
@@ -331,6 +338,7 @@ func (e *Engine) housekeeping(ctx context.Context) {
 	e.maybeDigest(ctx)
 	e.maybeBackup()
 	e.maybeHealthCheck(ctx)
+	e.maybeUpdateCheck(ctx)
 }
 
 // maybeHealthCheck probes the connectors in the background on the first pass

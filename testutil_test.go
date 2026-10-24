@@ -487,6 +487,7 @@ func newHarness(t testing.TB) *harness {
 		eng: NewEngine(store, vault, log), dns: newFakeDNS(t), src: newFakeSources(t), smtp: newFakeSMTP(t, nil), intel: newFakeIntel(t)}
 	h.eng.intelURLs = func() *intelURLs { u := h.intel.urls(); return &u }
 	h.eng.healthEvery = 0 // automatic connector checks would reach the real internet
+	h.eng.updateEvery = 0 // so would the daily update check
 	h.eng.newScanner = func(cfg *Config, res *Resolver) *Scanner {
 		sc := NewScanner(cfg, log, store, res)
 		sc.disc.urls = h.src.urls()

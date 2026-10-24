@@ -97,9 +97,15 @@ Always test the feature that changed, plus anything it could break. Add a Go tes
 - Open the PR with the REST API: `gh api repos/cyberjangle101/cybersour-attack-surface-scanner/pulls -f title=... -f head=... -f base=main -F body=@file.md`
   (`gh pr create` fails here because GraphQL is blocked).
 - `main` needs the Security Scan workflow to pass and owner approval. Do not try to bypass it.
-- Release build: `CGO_ENABLED=0 go build -ldflags "-s -w -X main.version=X.Y.Z"` with the newest Go toolchain, then `govulncheck -mode=binary <binary>`.
-  Do not commit binaries or stray build output (`easm-agent`).
-- Update the README ("What's new") and the version for every release.
+- Pushes to a branch with no PR are refused by the code-scanning rule (except the push that creates it): push once, then open the PR.
+- Publishing is tag-driven: after the PR merges, tag `vX.Y.Z` on `main` and push the tag. `.github/workflows/release.yml` builds,
+  scans, signs `SHA256SUMS` with the `EASM_RELEASE_SIGNING_KEY` secret and publishes. See RELEASING.md. Never handle the private key.
+- Installed agents self-update from those releases (`update.go`): never weaken the signature, version-header or GitHub-host checks.
+  Plain HTTP and other hosts are only for `-X main.updateAPIBase=http://127.0.0.1:...` test builds.
+- Local release build (for testing): `CGO_ENABLED=0 go build -ldflags "-s -w -X main.version=X.Y.Z"` with the newest Go toolchain,
+  then `govulncheck -mode=binary` on an unstripped build. Do not commit binaries or stray build output (`easm-agent`).
+- Update the README ("What's new" and "Status") for every release: the release workflow refuses a tag the README does not mention.
+- One agent per data folder (`easm.lock`). Tests or tools that open a data folder while an agent runs must expect the lock.
 - Commit messages are imperative and say why. PR descriptions list what was verified and what could not be run.
 
 ## Reporting back

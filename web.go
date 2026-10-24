@@ -78,10 +78,12 @@ type Server struct {
 	fails    map[string]*failRec
 	secure   bool
 	hmu      sync.RWMutex
-	hosts    map[string]bool // allowed Host headers (loopback binds); nil = no check
-	listen   ListenControl   // changes the listen address at run time (nil in tests)
-	certs    CertControl     // shows and replaces the web server certificate (nil when a certificate is configured by file, and in tests)
-	stop     func()          // shuts down an interactive run from System health (nil under a service manager and in tests)
+	hosts    map[string]bool        // allowed Host headers (loopback binds); nil = no check
+	listen   ListenControl          // changes the listen address at run time (nil in tests)
+	certs    CertControl            // shows and replaces the web server certificate (nil when a certificate is configured by file, and in tests)
+	stop     func()                 // shuts down an interactive run from System health (nil under a service manager and in tests)
+	restart  func()                 // after an update: starts the new program and stops this one (nil: restart by hand)
+	exePath  func() (string, error) // the program file an update replaces (tests point it at a temp file)
 
 	dummyHash []byte
 }
@@ -249,6 +251,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /health", s.auth(permView, s.healthView))
 	mux.HandleFunc("POST /health/check", s.auth(permTriage, s.healthCheck))
 	mux.HandleFunc("POST /system/stop", s.auth(permAdmin, s.stopAgent))
+	mux.HandleFunc("POST /system/update/check", s.auth(permAdmin, s.updateCheck))
+	mux.HandleFunc("POST /system/update/install", s.auth(permAdmin, s.updateInstall))
 
 	mux.HandleFunc("GET /report", s.auth(permView, s.report))
 	mux.HandleFunc("GET /report/inventory.csv", s.auth(permView, s.reportCSV("inventory")))
@@ -480,6 +484,11 @@ func (s *Server) render(w http.ResponseWriter, _ *http.Request, sess *Session, p
 		sess.Flash = nil
 		s.mu.Unlock()
 		data["Scanning"] = s.eng.Current()
+		if sess.Role == RoleAdmin {
+			if u := s.eng.UpdateState(); u.Available && u.Latest != nil {
+				data["UpdateBanner"] = u.Latest.Version
+			}
+		}
 	}
 	var buf bytes.Buffer
 	if err := s.tpl[page].ExecuteTemplate(&buf, "layout", data); err != nil {
@@ -1418,7 +1427,7 @@ func parseSettingsForm(r *http.Request, cur Settings) (Settings, error) {
 	on := func(n string) bool { return r.PostFormValue(n) == "on" }
 	str := func(n string) string { return strings.TrimSpace(r.PostFormValue(n)) }
 	s.AlertImmediateSeverity, s.DigestFrequency = str("alert_immediate_severity"), str("digest_frequency")
-	s.PublicURL, s.OrgName = str("public_url"), r.PostFormValue("org_name")
+	s.PublicURL, s.OrgName, s.UpdateCheck = str("public_url"), r.PostFormValue("org_name"), on("update_check")
 	s.SMTPHost, s.SMTPSecurity, s.SMTPUsername = str("smtp_host"), str("smtp_security"), str("smtp_username")
 	s.SMTPFrom, s.SMTPSubjectPrefix = str("smtp_from"), r.PostFormValue("smtp_subject_prefix")
 	s.DNSResolvers = splitList(r.PostFormValue("dns_resolvers"), true)

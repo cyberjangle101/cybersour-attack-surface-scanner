@@ -29,6 +29,29 @@
   </table></div>
 </section>
 
+{{if .IsAdmin}}
+<section class="card" id="updates">
+  <h2>Updates</h2>
+  {{with .Upd}}
+    {{if .Err}}<p><span class="badge warn">Check failed</span> {{.Err}}</p>
+    {{else if .Available}}<p><span class="badge info">Version {{.Latest.Version}} available</span> You are running {{$.Version}}. Released {{.Latest.Published.Format "2006-01-02"}} · <a href="{{.Latest.URL}}" rel="noopener noreferrer">release page</a></p>
+      {{if .Latest.Notes}}<details><summary>What&rsquo;s new</summary><pre class="notes">{{.Latest.Notes}}</pre></details>{{end}}
+      {{if .CanApply}}
+      <form method="post" action="/system/update/install" class="inline" data-confirm="Install EASM Agent {{.Latest.Version}}? A backup is taken first. {{if $.CanRestart}}The agent then restarts in a new window (enter the key passphrase there if it has one).{{else}}You restart the agent afterwards to finish.{{end}}">
+        <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="version" value="{{.Latest.Version}}">
+        <button class="btn primary" type="submit" data-busy="Downloading and verifying…">Back up and install {{.Latest.Version}}</button>
+      </form>
+      <p class="hint">The download is checked against the release&rsquo;s signed checksums before anything changes. The current version is kept for <span class="mono">easm-agent -rollback</span>.</p>
+      {{else}}<p class="hint">This build has no release signing key, so it cannot verify downloads and will not install them. Download the new version from the release page instead.</p>{{end}}
+    {{else if and (not .Checked.IsZero) (not .Latest)}}<p><span class="badge good">Up to date</span> No versioned release has been published yet.</p>
+    {{else if not .Checked.IsZero}}<p><span class="badge good">Up to date</span> {{$.Version}} is the latest release.</p>
+    {{else}}<p class="muted">Not checked yet. Daily checks can be switched on or off in Settings → Organisation.</p>{{end}}
+    {{if not .Checked.IsZero}}<p class="muted small">Last checked {{.Checked.Format "2006-01-02 15:04"}}.</p>{{end}}
+  {{end}}
+  <form method="post" action="/system/update/check" class="inline"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="btn" type="submit" data-busy="Checking…">Check for updates now</button></form>
+</section>
+{{end}}
+
 {{range .Groups}}
 <section class="card">
   <h2>{{.Name}}</h2>
