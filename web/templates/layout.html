@@ -1,0 +1,42 @@
+{{define "layout"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>{{if .Title}}{{.Title}} · {{end}}EASM Agent</title>
+{{if .Refresh}}<meta http-equiv="refresh" content="{{.Refresh}}">{{end}}
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/app.js" defer></script>
+</head>
+<body>
+{{if .User}}
+<header class="top">
+  <div class="wrap bar">
+    <a class="brand" href="/">EASM Agent</a>
+    <nav>
+      <a href="/" class="{{if eq .Nav "dashboard"}}on{{end}}">Dashboard</a>
+      <a href="/findings" class="{{if eq .Nav "findings"}}on{{end}}">Findings</a>
+      <a href="/assets" class="{{if eq .Nav "assets"}}on{{end}}">Assets</a>
+      <a href="/events" class="{{if eq .Nav "events"}}on{{end}}">Events</a>
+      <a href="/report" class="{{if eq .Nav "report"}}on{{end}}">Report</a>
+      <a href="/health" class="{{if eq .Nav "health"}}on{{end}}">System health</a>
+      {{if .IsAdmin}}<a href="/settings" class="{{if eq .Nav "settings"}}on{{end}}">Settings</a>
+      <a href="/users" class="{{if eq .Nav "users"}}on{{end}}">Users</a>
+      <a href="/audit" class="{{if eq .Nav "audit"}}on{{end}}">Audit log</a>{{end}}
+    </nav>
+    <div class="who">
+      <a href="/account" class="{{if eq .Nav "account"}}on{{end}}">{{.User}}</a>
+      <form method="post" action="/logout" class="inline"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="link" type="submit">Sign out</button></form>
+    </div>
+  </div>
+  {{if .Scanning}}<div class="scanbar"><div class="wrap">Scanning <strong>{{.Scanning}}</strong>…</div></div>{{end}}
+</header>
+{{end}}
+<main class="wrap">
+{{with .Flash}}<div class="flash {{.Kind}}" role="status">{{.Text}}</div>{{end}}
+{{template "content" .}}
+</main>
+<footer class="wrap foot">EASM Agent {{.Version}} · passive reconnaissance only. Monitor only domains you own or are authorised to assess.</footer>
+</body>
+</html>{{end}}

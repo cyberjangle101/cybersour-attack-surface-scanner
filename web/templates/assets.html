@@ -1,0 +1,32 @@
+{{define "content"}}
+<div class="head">
+  <div><h1>Assets</h1><p class="muted">Everything discovered for your monitored entities: domains, IP addresses, open services, certificates, DNS records, vulnerabilities and registration data.</p></div>
+  <a class="btn" href="{{href "/assets.csv" .BaseQuery}}">Export CSV</a>
+</div>
+<form method="get" class="filters">
+  <label>Entity <select name="target"><option value="">All</option>{{range .Targets}}<option value="{{.}}" {{if eq . $.Target}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+  <label>Search <input name="q" value="{{.Q}}" placeholder="host, IP, port, CVE, issuer…" maxlength="100"></label>
+  {{if .Type}}<input type="hidden" name="type" value="{{.Type}}">{{end}}
+  <button class="btn" type="submit">Apply</button>
+</form>
+<nav class="tabs">
+  <a class="{{if not .Type}}on{{end}}" href="{{href "/assets" .AllQuery}}">All <span class="badge">{{.Grand}}</span></a>
+  {{range .Tabs}}<a class="{{if .On}}on{{end}}" href="{{href "/assets" .Query}}">{{.Label}} <span class="badge">{{.Count}}</span></a>{{end}}
+</nav>
+<section class="card">
+  <p class="muted small">{{.Total}} asset(s).</p>
+  {{if .Assets}}
+  <div class="scroll"><table>
+    <thead><tr><th>Type</th><th>Asset</th><th>Entity</th><th>Details</th><th>Source</th><th>First seen</th><th>Last seen</th></tr></thead>
+    <tbody>{{range .Assets}}<tr>
+      <td><span class="badge">{{.Type}}</span></td><td class="mono"><a href="{{href "/assets/view" (printf "type=%s&id=%s" .Type (urlquery .Key))}}">{{.Value}}</a></td><td>{{.Root}}</td><td class="prose small">{{.Details}}</td><td class="small">{{.Sources}}</td><td>{{ts .FirstSeen}}</td><td>{{ts .LastSeen}}</td>
+    </tr>{{end}}</tbody>
+  </table></div>
+  {{if gt .Pages 1}}<nav class="pager">
+    {{if gt .Page 1}}<a class="btn small" href="{{href "/assets" .BaseQuery (printf "page=%d" (sub .Page 1))}}">← Previous</a>{{end}}
+    <span class="muted">Page {{.Page}} of {{.Pages}}</span>
+    {{if lt .Page .Pages}}<a class="btn small" href="{{href "/assets" .BaseQuery (printf "page=%d" (add .Page 1))}}">Next →</a>{{end}}
+  </nav>{{end}}
+  {{else}}<p class="muted">No assets yet. Add an entity on the dashboard and the first scan will populate this list.</p>{{end}}
+</section>
+{{end}}

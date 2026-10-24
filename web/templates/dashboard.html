@@ -1,0 +1,76 @@
+{{define "content"}}
+<h1>Overview</h1>
+{{if .SMTPOff}}{{if .IsAdmin}}<div class="flash warn">Email alerts are not set up yet, so findings will only appear here and in the log. <a href="/settings#smtp">Configure email</a></div>{{end}}{{end}}
+
+<div class="stats">
+  <div class="stat"><div class="n">{{.Stats.Targets}}</div><div class="l">Monitored domains</div></div>
+  <div class="stat"><div class="n">{{.Stats.Hosts}}</div><div class="l">Hosts tracked</div></div>
+  <div class="stat {{if .Stats.HighFindings}}bad{{else if .Stats.OpenFindings}}warn{{end}}"><div class="n">{{.Stats.OpenFindings}}</div><div class="l">Open findings{{if .Stats.HighFindings}} ({{.Stats.HighFindings}} high){{end}}</div></div>
+  <div class="stat"><div class="n">{{.Stats.Events24h}}</div><div class="l">Changes in 24h</div></div>
+</div>
+
+{{if .IsAdmin}}
+<section class="card" id="add">
+  <h2>Add an entity to monitor</h2>
+  <p class="muted">Enter a root domain. The agent finds its subdomains and certificates, resolves them, checks who owns the addresses, and then watches for changes on a schedule. The first scan is silent (it just records what exists today).</p>
+  <form method="post" action="/targets" class="grid">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label class="wide">Domain <input name="domain" placeholder="example.com" value="{{index .Form "domain"}}" required autocomplete="off" spellcheck="false"><span class="hint">Names with accented or non-Latin letters (such as bücher.example) are converted to their ASCII form (xn--bcher-kva.example) automatically.</span></label>
+    <details class="wide" {{if or (index .Form "asns") (index .Form "keywords") (index .Form "ignore") (index .Form "interval") (index .Form "notes")}}open{{end}}>
+      <summary>Ownership checks and options (optional)</summary>
+      <div class="grid inner">
+        <label>Expected ASNs <textarea name="asns" rows="2" placeholder="AS13335, AS16509">{{index .Form "asns"}}</textarea>
+          <span class="hint">Networks you expect to host this domain (your own, your cloud/CDN). Addresses announced by any other network raise a HIGH finding. Leave blank to skip the check.</span></label>
+        <label>Expected organisation keywords <textarea name="keywords" rows="2" placeholder="EXAMPLE-CORP, MICROSOFT">{{index .Form "keywords"}}</textarea>
+          <span class="hint">Matched against the ASN's organisation name (case-insensitive). An address is fine if it matches an ASN <em>or</em> a keyword.</span></label>
+        <label>Ignore subdomains (one regex per line) <textarea name="ignore" rows="2" placeholder="^ci-\d+\.example\.com$">{{index .Form "ignore"}}</textarea>
+          <span class="hint">Silence noisy, ephemeral names (build agents, preview environments).</span></label>
+        <label>Scan every (minutes) <input name="interval" inputmode="numeric" placeholder="blank = default" value="{{index .Form "interval"}}"><span class="hint">Minimum 15. Blank uses the global default from Settings.</span></label>
+        <label class="wide">Notes <input name="notes" maxlength="500" value="{{index .Form "notes"}}" placeholder="Owner, ticket, anything useful"></label>
+      </div>
+    </details>
+    <div class="wide"><button class="btn primary" type="submit">Add and start monitoring</button></div>
+  </form>
+</section>
+{{end}}
+
+<section class="card">
+  <h2>Monitored domains</h2>
+  {{if .Rows}}
+  <div class="scroll"><table>
+    <thead><tr><th>Domain</th><th>Status</th><th class="num">Hosts</th><th>Findings</th><th>Last scan</th><th>Next scan</th><th></th></tr></thead>
+    <tbody>
+    {{range .Rows}}
+    <tr>
+      <td><a href="/targets/{{.T.ID}}"><strong>{{.T.Domain}}</strong></a>{{if .T.Notes}}<div class="muted small">{{.T.Notes}}</div>{{end}}</td>
+      <td><span class="badge {{.StateClass}}">{{.State}}</span>{{if and (eq .T.LastStatus "error") .T.LastError}}<div class="muted small">{{.T.LastError}}</div>{{end}}{{if .Prog}}{{template "progress" .Prog}}{{else if eq .State "Queued"}}<div class="muted small">Waiting for a free scan slot…</div>{{end}}</td>
+      <td class="num">{{.Hosts}}</td>
+      <td>{{if .FindingTotal}}<a href="/findings?target={{.T.Domain | urlquery}}"><span class="badge {{sevClass .MaxSev}}">{{.FindingTotal}} open</span></a>{{else}}<span class="muted">none</span>{{end}}</td>
+      <td title="{{ts .T.LastEnd}}">{{if .T.LastEnd}}{{ago .T.LastEnd}}{{else}}—{{end}}</td>
+      <td>{{if .T.Enabled}}{{until .T.NextScan}}{{else}}—{{end}}</td>
+      <td class="actions">
+        {{if $.CanTriage}}{{if .T.Enabled}}
+        <form method="post" action="/targets/{{.T.ID}}/scan" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="btn small" type="submit">Scan now</button></form>
+        {{end}}{{end}}
+      </td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table></div>
+  {{else}}<p class="muted">Nothing is being monitored yet.{{if .IsAdmin}} Add your first domain above.{{end}}</p>{{end}}
+</section>
+
+{{if .Scans}}
+<section class="card">
+  <h2>Recent scans</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Finished</th><th>Domain</th><th>Result</th><th class="num">Hosts</th><th class="num">New hosts</th><th class="num">New records</th><th class="num">New findings</th></tr></thead>
+    <tbody>{{range .Scans}}<tr>
+      <td>{{ts .Finished}}</td><td>{{.Root}}</td>
+      <td>{{if eq .Status "ok"}}<span class="badge good">ok</span>{{else}}<span class="badge bad">{{.Status}}</span> <span class="muted small">{{.Error}}</span>{{end}}</td>
+      <td class="num">{{.Hosts}}</td><td class="num">{{.NewSubdomains}}</td><td class="num">{{.NewRecords}}</td><td class="num">{{.NewFindings}}</td>
+    </tr>{{end}}</tbody>
+  </table></div>
+</section>
+{{end}}
+{{end}}

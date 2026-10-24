@@ -1,0 +1,8 @@
+{{define "content"}}
+<div class="card narrow">
+  <h1>{{.Title}}</h1>
+  <p>The web interface now listens on <strong>{{.Addr}}</strong>. This page was served by the old address, which will stop in a moment.</p>
+  <p><a class="btn primary" href="{{.URL}}">Open the new address</a></p>
+  <p class="muted">If that address is a different computer name or IP, sign in again there. If you listen on all interfaces, use this computer's own address from another machine.</p>
+</div>
+{{end}}

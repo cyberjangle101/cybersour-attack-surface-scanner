@@ -1,0 +1,55 @@
+{{define "content"}}
+<h1>Two-factor sign-in</h1>
+<p class="muted"><a href="/account">&larr; My account</a></p>
+{{if .Directory}}
+<section class="card"><p>Your sign-in is handled by Active Directory, so two-factor is whatever your directory requires.</p></section>
+{{else}}
+{{if .Codes}}
+<section class="card">
+  <h2>Your recovery codes</h2>
+  <p>Save these somewhere safe, such as a password manager. Each one works once if you lose your phone. <strong>They will not be shown again.</strong></p>
+  <ul class="mono">{{range .Codes}}<li>{{.}}</li>{{end}}</ul>
+</section>
+{{end}}
+{{if .On}}
+<section class="card">
+  <p>Two-factor sign-in is <strong>on</strong>. You have {{.Left}} recovery code(s) left.</p>
+  <h2>New recovery codes</h2>
+  <form method="post" action="/account/2fa/recovery" class="settings">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <div class="grid">
+      <label>Your password <input type="password" name="current" autocomplete="current-password" required></label>
+      <label>Current code <input name="code" inputmode="numeric" autocomplete="one-time-code" required maxlength="10"></label>
+    </div>
+    <div class="actions"><button class="btn" type="submit">Make new codes</button></div>
+  </form>
+  <h2>Turn off</h2>
+  <form method="post" action="/account/2fa/disable" class="settings">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <div class="grid">
+      <label>Your password <input type="password" name="current" autocomplete="current-password" required></label>
+      <label>Current code <input name="code" inputmode="numeric" autocomplete="one-time-code" required maxlength="10"></label>
+    </div>
+    <div class="actions"><button class="btn danger" type="submit">Turn off two-factor</button></div>
+  </form>
+</section>
+{{else}}
+<section class="card">
+  {{if .Enforced}}<p class="flash warn">Your administrator requires two-factor sign-in. Finish this to continue.</p>{{end}}
+  <h2>Set up</h2>
+  <ol>
+    <li>Install an authenticator app (any that supports time-based codes).</li>
+    <li>Scan this picture with it, or type the key in by hand.</li>
+    <li>Type the 6-digit code it shows below.</li>
+  </ol>
+  <p><img class="qr" src="{{.QR}}" width="220" height="220" alt="QR code for your authenticator app"></p>
+  <p>Key: <strong class="mono">{{.Secret}}</strong></p>
+  <form method="post" action="/account/2fa/enable" class="settings">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>Code from the app <input name="code" inputmode="numeric" autocomplete="one-time-code" required maxlength="10" autofocus></label>
+    <div class="actions"><button class="btn primary" type="submit">Turn on</button></div>
+  </form>
+</section>
+{{end}}
+{{end}}
+{{end}}

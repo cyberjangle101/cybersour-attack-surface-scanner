@@ -1,0 +1,218 @@
+{{define "content"}}
+<h1>Settings</h1>
+<p class="muted">These apply to every monitored domain and take effect from the next scan. No restart is needed.</p>
+<form method="post" action="/settings" class="settings">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+
+  <section class="card">
+    <h2>Scanning schedule</h2>
+    <div class="grid">
+      <label>Default scan interval (minutes) <input name="interval_minutes" inputmode="numeric" value="{{.S.IntervalMinutes}}"><span class="hint">360 = every 6 hours. Individual domains can override this. Minimum 15.</span></label>
+      <label>Random jitter (minutes) <input name="jitter_minutes" inputmode="numeric" value="{{.S.JitterMinutes}}"><span class="hint">Spreads load on the free public data sources.</span></label>
+      <label>Per-domain scan timeout (minutes) <input name="target_timeout_minutes" inputmode="numeric" value="{{.S.TargetTimeoutMinutes}}"></label>
+      <label>Domains scanned at the same time <input name="concurrent_scans" inputmode="numeric" value="{{.S.ConcurrentScans}}"><span class="hint">1–8. Each scan has its own DNS rate limit, so keep this low on a slow connection.</span></label>
+      <label>Keep history for (days) <input name="event_retention_days" inputmode="numeric" value="{{.S.EventRetentionDays}}"><span class="hint">Old alert events and scan history are pruned after this.</span></label>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Alerting</h2>
+    <p class="muted">Alerts are only ever sent for <em>changes</em>: new subdomains, new IP addresses or DNS records, newly logged certificates, and new findings.</p>
+    <div class="grid">
+      <label>Send an email when at least this many changes are pending <input name="alert_min_events" inputmode="numeric" value="{{.S.AlertMinEvents}}"></label>
+      <label>…or immediately for anything at or above
+        <select name="alert_immediate_severity">
+          <option value="high" {{if eq .S.AlertImmediateSeverity "high"}}selected{{end}}>High</option>
+          <option value="medium" {{if eq .S.AlertImmediateSeverity "medium"}}selected{{end}}>Medium</option>
+          <option value="low" {{if eq .S.AlertImmediateSeverity "low"}}selected{{end}}>Low</option>
+          <option value="info" {{if eq .S.AlertImmediateSeverity "info"}}selected{{end}}>Info</option></select></label>
+      <label>Maximum rows per email <input name="alert_max_rows" inputmode="numeric" value="{{.S.AlertMaxRows}}"></label>
+      <label>Dashboard address for links in emails <input name="public_url" value="{{.S.PublicURL}}" placeholder="https://easm.example.com (optional)"></label>
+      <label class="check"><input type="checkbox" name="alert_certs" {{if .S.AlertCerts}}checked{{end}}> Alert on newly logged TLS certificates</label>
+      <label class="check"><input type="checkbox" name="alert_txt" {{if .S.AlertTXT}}checked{{end}}> Alert on new TXT records <span class="hint">Noisy: verification tokens change often.</span></label>
+      <label class="check"><input type="checkbox" name="require_2fa" {{if .S.Require2FA}}checked{{end}}> Require two-factor sign-in for local accounts <span class="hint">People without it are taken to the set-up page after signing in, and can do nothing else until they finish. Directory accounts are not affected: use your directory&rsquo;s own multi-factor sign-in. API tokens are not affected.</span></label>
+      <label class="check"><input type="checkbox" name="alert_removals" {{if .S.AlertRemovals}}checked{{end}}> Alert when things disappear (DNS records, hosts, open ports, resolved findings) <span class="hint">Removals are always shown on the Events page; this only controls the email.</span></label>
+      <label>Scans before a missing DNS record counts as removed <input name="removal_misses" inputmode="numeric" value="{{.S.RemovalMisses}}"><span class="hint">1 to 10. Load-balanced names return different answers each time, so a record must be missing from this many scans in a row.</span></label>
+      <label class="check"><input type="checkbox" name="alert_baseline_summary" {{if .S.AlertBaselineSummary}}checked{{end}}> Email a short summary when a domain's baseline is first established</label>
+    </div>
+  </section>
+
+<section class="card" id="active">
+  <h2>Active checks</h2>
+  <p class="muted">Off by default. When on, the agent connects to your own web servers during each scan: it reads their TLS certificates, requests the home page and a few well-known files, and checks cloud storage that your DNS names point to. It only reads (GET requests and TLS handshakes), never to private or internal addresses, and by default only to addresses inside the networks you declared as yours. Only switch this on for systems you are allowed to test.</p>
+  <div class="grid">
+    <label class="check wide"><input type="checkbox" name="active_checks" {{if .S.ActiveChecks}}checked{{end}}> Run active checks during scans</label>
+    <label class="check"><input type="checkbox" name="active_paths" {{if .S.ActivePaths}}checked{{end}}> Look for exposed files (.git, .env, status pages)</label>
+    <label class="check"><input type="checkbox" name="active_buckets" {{if .S.ActiveBuckets}}checked{{end}}> Check cloud storage that names point to</label>
+    <label class="check wide"><input type="checkbox" name="active_foreign" {{if .S.ActiveForeign}}checked{{end}}> Also probe addresses outside my expected networks <span class="hint">That can touch other people&rsquo;s servers (for example a SaaS provider). Leave off unless you know you may.</span></label>
+    <label>Hosts per scan <input name="active_max_hosts" inputmode="numeric" value="{{.S.ActiveMaxHosts}}"></label>
+    <label>Timeout per request (seconds) <input name="active_timeout_seconds" inputmode="numeric" value="{{.S.ActiveTimeoutSeconds}}"></label>
+    <label>Parallel probes <input name="active_concurrency" inputmode="numeric" value="{{.S.ActiveConcurrency}}"></label>
+    <label class="check wide"><input type="checkbox" name="screenshots" {{if .S.Screenshots}}checked{{end}}> Take screenshots of web pages <span class="hint">Needs Chrome, Chromium or Edge on this computer. The browser loads the page, so only use it for sites you trust to be yours.</span></label>
+    <label>Screenshots per scan <input name="screenshot_max" inputmode="numeric" value="{{.S.ScreenshotMax}}"></label>
+    <label>Browser program (optional) <input name="chrome_path" value="{{.S.ChromePath}}" placeholder="found automatically" autocomplete="off"></label>
+  </div>
+</section>
+  <section class="card" id="smtp">
+    <h2>Email (SMTP)</h2>
+    <label class="check"><input type="checkbox" name="smtp_enabled" {{if .S.SMTPEnabled}}checked{{end}}> Enable email alerts and reports</label>
+    <div class="grid">
+      <label>SMTP server <input name="smtp_host" value="{{.S.SMTPHost}}" placeholder="smtp.example.com"></label>
+      <label>Port <input name="smtp_port" inputmode="numeric" value="{{.S.SMTPPort}}"></label>
+      <label>Connection security
+        <select name="smtp_security">
+          <option value="starttls" {{if eq .S.SMTPSecurity "starttls"}}selected{{end}}>STARTTLS (usually port 587)</option>
+          <option value="tls" {{if eq .S.SMTPSecurity "tls"}}selected{{end}}>TLS / SMTPS (usually port 465)</option>
+          <option value="none" {{if eq .S.SMTPSecurity "none"}}selected{{end}}>None (plain text, not recommended)</option></select></label>
+      <label>Username <input name="smtp_username" value="{{.S.SMTPUsername}}" autocomplete="off"></label>
+      <label>Password <input type="password" name="smtp_password" autocomplete="new-password" placeholder="{{if .HasPassword}}(saved; leave blank to keep){{else}}(not set){{end}}"><span class="hint">Stored encrypted. Tick below to remove it.</span></label>
+      <label class="check"><input type="checkbox" name="smtp_password_clear"> Remove the saved password</label>
+      <label>From address <input name="smtp_from" value="{{.S.SMTPFrom}}" placeholder="EASM Agent &lt;alerts@example.com&gt;"></label>
+      <label>Subject prefix <input name="smtp_subject_prefix" value="{{.S.SMTPSubjectPrefix}}"></label>
+      <label class="wide">Recipients (one per line) <textarea name="smtp_to" rows="3" placeholder="secops@example.com">{{.Recipients}}</textarea></label>
+      <label class="check wide"><input type="checkbox" name="smtp_insecure_skip_verify" {{if .S.SMTPInsecureSkipVerify}}checked{{end}}> Do not verify the server's TLS certificate <span class="hint">Only for internal relays with self-signed certificates.</span></label>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Scheduled report email</h2>
+    <div class="grid">
+      <label>Send a summary report
+        <select name="digest_frequency">
+          <option value="off" {{if eq .S.DigestFrequency "off"}}selected{{end}}>Never</option>
+          <option value="daily" {{if eq .S.DigestFrequency "daily"}}selected{{end}}>Daily</option>
+          <option value="weekly" {{if eq .S.DigestFrequency "weekly"}}selected{{end}}>Weekly</option></select></label>
+      <label>At or after this hour (server time, 0-23) <input name="digest_hour" inputmode="numeric" value="{{.S.DigestHour}}"></label>
+    </div>
+    <p class="muted small">The report lists every domain, all open findings and everything that changed in the period. It is separate from change alerts.</p>
+  </section>
+
+  <section class="card">
+    <h2>Data sources</h2>
+    <p class="muted">All free and unauthenticated. The agent only queries these public services and public DNS resolvers; it never sends traffic to your domains.</p>
+    <div class="grid">
+      <label class="check"><input type="checkbox" name="crtsh_enabled" {{if .S.CrtShEnabled}}checked{{end}}> crt.sh (Certificate Transparency)</label>
+      <label class="check"><input type="checkbox" name="hackertarget_enabled" {{if .S.HackerTargetEnabled}}checked{{end}}> HackerTarget host search <span class="hint">Free tier: roughly 50 queries per day.</span></label>
+      <label class="check"><input type="checkbox" name="otx_enabled" {{if .S.OTXEnabled}}checked{{end}}> AlienVault OTX passive DNS</label>
+      <label class="check"><input type="checkbox" name="anubis_enabled" {{if .S.AnubisEnabled}}checked{{end}}> Anubis subdomain dataset</label>
+      <label>crt.sh timeout per attempt (seconds) <input name="crtsh_timeout_seconds" inputmode="numeric" value="{{.S.CrtShTimeoutSeconds}}"></label>
+      <label>crt.sh attempts (with exponential backoff) <input name="crtsh_max_attempts" inputmode="numeric" value="{{.S.CrtShMaxAttempts}}"></label>
+    </div>
+    <p class="muted small">Without crt.sh, a domain's baseline is never marked complete, because crt.sh is the most complete source.</p>
+  </section>
+
+  <section class="card" id="intel">
+    <h2>Exposure intelligence and optional API keys</h2>
+    <p class="muted">These services tell you what the internet already sees on your addresses: open ports, known vulnerabilities and registration dates. They are looked up by <strong>IP address</strong> (and, for Shodan DNS and VirusTotal, by <strong>domain name</strong>), so the addresses you monitor are shared with each service you enable. The agent never scans or connects to your hosts itself.</p>
+    <div class="grid">
+      <label class="check"><input type="checkbox" name="internetdb_enabled" {{if .S.InternetDBEnabled}}checked{{end}}> Shodan InternetDB <span class="hint">Free, no key. Open ports, CVEs and tags per IP, refreshed weekly.</span></label>
+      <label class="check"><input type="checkbox" name="rdap_enabled" {{if .S.RDAPEnabled}}checked{{end}}> RDAP domain registration <span class="hint">Free, no key. Registrar and expiry date; raises a finding when a domain is close to expiring.</span></label>
+      <label>Maximum IPs looked up per scan <input name="enrich_max_ips" inputmode="numeric" value="{{.S.EnrichMaxIPs}}"><span class="hint">Applies to each source. Answers are cached for 24 hours, so large estates are covered over several scans.</span></label>
+    </div>
+
+    <h3>Shodan (API key)</h3>
+    <div class="grid">
+      <label class="check"><input type="checkbox" name="shodan_enabled" {{if .S.ShodanEnabled}}checked{{end}}> Use Shodan host data <span class="hint">Banners, products and vulnerabilities per IP. Host lookups do not use query credits.</span></label>
+      <label>API key <input type="password" name="shodan_key" autocomplete="new-password" placeholder="{{if .HasShodan}}(saved; leave blank to keep){{else}}(not set){{end}}"><span class="hint">From account.shodan.io. Stored encrypted and never shown again.</span></label>
+      <label class="check"><input type="checkbox" name="shodan_domain_lookup" {{if .S.ShodanDomainLookup}}checked{{end}}> Also find subdomains through Shodan DNS <span class="hint">Uses one query credit per scan and may need a paid plan.</span></label>
+      <label class="check"><input type="checkbox" name="shodan_key_clear"> Remove the saved Shodan key</label>
+    </div>
+
+    <h3>Censys (Platform API)</h3>
+    <div class="grid">
+      <label class="check"><input type="checkbox" name="censys_enabled" {{if .S.CensysEnabled}}checked{{end}}> Use Censys host data <span class="hint">Services seen on each IP. Free accounts can do host lookups.</span></label>
+      <label>Personal access token <input type="password" name="censys_token" autocomplete="new-password" placeholder="{{if .HasCensys}}(saved; leave blank to keep){{else}}(not set){{end}}"><span class="hint">Create one under API Access in the Censys Platform console.</span></label>
+      <label>Organisation ID (paid plans only) <input name="censys_org_id" value="{{.S.CensysOrgID}}" autocomplete="off" placeholder="leave blank on a free account"></label>
+      <label class="check"><input type="checkbox" name="censys_token_clear"> Remove the saved Censys token</label>
+    </div>
+
+    <h3>Have I Been Pwned (leaked accounts)</h3>
+    <div class="grid">
+      <label class="check"><input type="checkbox" name="hibp_enabled" {{if .S.HIBPEnabled}}checked{{end}}> Check whether accounts at your domains appear in data breaches <span class="hint">Needs a paid Have I Been Pwned key, and each domain must be verified in your HIBP dashboard. Only the domain name is sent. The affected addresses are not stored here; the finding points you to the HIBP dashboard.</span></label>
+      <label>API key <input type="password" name="hibp_key" autocomplete="new-password" placeholder="{{if .HasHIBP}}(saved; leave blank to keep){{else}}(not set){{end}}"></label>
+      <label class="check"><input type="checkbox" name="hibp_key_clear"> Remove the saved key</label>
+    </div>
+
+    <h3>GitHub (public code that names your domain)</h3>
+    <div class="grid">
+      <label class="check"><input type="checkbox" name="github_enabled" {{if .S.GitHubEnabled}}checked{{end}}> Search public GitHub code for your domain next to words like password, secret and token <span class="hint">Only the domain name is sent. Results are leads, not proof: many are harmless documentation, so accept the risk on those. Searches are spaced out to stay within GitHub&rsquo;s limit of 10 a minute.</span></label>
+      <label>Access token <input type="password" name="github_token" autocomplete="new-password" placeholder="{{if .HasGitHub}}(saved; leave blank to keep){{else}}(not set){{end}}"><span class="hint">A fine-grained token with no permissions is enough; code search just needs you to be signed in.</span></label>
+      <label class="check"><input type="checkbox" name="github_token_clear"> Remove the saved token</label>
+    </div>
+
+    <h3>VirusTotal (API key)</h3>
+    <div class="grid">
+      <label class="check"><input type="checkbox" name="virustotal_enabled" {{if .S.VirusTotalEnabled}}checked{{end}}> Find subdomains through VirusTotal <span class="hint">Free keys allow 4 requests per minute and 500 per day, so the agent paces itself and reads at most 120 subdomains per scan.</span></label>
+      <label>API key <input type="password" name="virustotal_key" autocomplete="new-password" placeholder="{{if .HasVT}}(saved; leave blank to keep){{else}}(not set){{end}}"></label>
+      <label class="check"><input type="checkbox" name="virustotal_key_clear"> Remove the saved VirusTotal key</label>
+    </div>
+    <p class="muted small">Check that a key works on the <a href="/health">System health</a> page after saving. Findings from these sources are based on third-party scan data that can be days old and are matched from banners, so confirm before acting.</p>
+  </section>
+
+  <section class="card">
+    <h2>Wider discovery</h2>
+    <p class="muted">These look beyond the names you listed. They use DNS lookups and the public certificate logs only; nothing connects to anyone&rsquo;s servers.</p>
+    <div class="grid">
+      <label class="check"><input type="checkbox" name="lookalike_enabled" {{if .S.LookalikeEnabled}}checked{{end}}> Look for look-alike domains <span class="hint">Tries typos, swapped and similar-looking letters, added words like &ldquo;-login&rdquo; and other endings of each domain, and reports the ones that exist. Raise a finding for each; accept the risk on ones that are yours.</span></label>
+      <label>Variations to try per scan <input name="lookalike_max" inputmode="numeric" value="{{.S.LookalikeMax}}"><span class="hint">10 to 2000. Each one costs a few DNS lookups.</span></label>
+      <label class="check"><input type="checkbox" name="related_enabled" {{if .S.RelatedEnabled}}checked{{end}}> Suggest other domains that share certificates with yours</label>
+      <label class="check"><input type="checkbox" name="reverseip_enabled" {{if .S.ReverseIPEnabled}}checked{{end}}> Suggest other domains on the same address (uses HackerTarget&rsquo;s free quota) <span class="hint">Skipped for shared hosting.</span></label>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>DNS and ownership lookups</h2>
+    <div class="grid">
+      <label>DNS resolvers (one per line) <textarea name="dns_resolvers" rows="3">{{.Resolvers}}</textarea></label>
+      <div>
+        <label>Concurrent lookups <input name="dns_workers" inputmode="numeric" value="{{.S.DNSWorkers}}"></label>
+        <label>Max queries per second <input name="dns_qps" inputmode="numeric" value="{{.S.DNSQPS}}"></label>
+        <label>Query timeout (seconds) <input name="dns_timeout_seconds" inputmode="numeric" value="{{.S.DNSTimeoutSeconds}}"></label>
+        <label>Retries <input name="dns_retries" inputmode="numeric" value="{{.S.DNSRetries}}"></label>
+      </div>
+      <label class="check"><input type="checkbox" name="asn_enabled" {{if .S.ASNEnabled}}checked{{end}}> Map addresses to ASN / organisation (Team Cymru DNS)</label>
+      <label class="check"><input type="checkbox" name="asn_bgpview_fallback" {{if .S.ASNBGPViewFallback}}checked{{end}}> Fall back to RIPEstat if Team Cymru fails</label>
+    </div>
+  </section>
+
+  <div class="sticky"><button class="btn primary" type="submit">Save settings</button></div>
+</form>
+
+<section class="card">
+  <h2>Alert channels</h2>
+  <p class="muted">Send changes to Slack, Microsoft Teams, a webhook, a syslog/SIEM collector, or create Jira tickets. <a href="/settings/channels">Set up alert channels</a></p>
+</section>
+<section class="card">
+  <h2>Directory sign-in</h2>
+  <p class="muted">Let people sign in with their Active Directory account, by group or one by one. <a href="/settings/ad">Set up Active Directory</a></p>
+</section>
+<section class="card">
+  <h2>Web interface address</h2>
+  {{with .Listen}}
+  <p class="muted">Listening on <strong class="mono">{{.Host}}:{{.Port}}</strong> ({{.Scheme}}). Pick this computer only for safety, or an address on a network card to reach the interface from other machines.</p>
+  {{if .Locked}}
+  <p class="flash warn">This address is set on the command line or in the config file, so it cannot be changed here.</p>
+  {{else}}
+  <form method="post" action="/settings/listen" class="settings">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <div class="grid">
+      <label>IP address or interface <input name="host" list="listen-choices" value="{{.Host}}" autocomplete="off"><span class="hint">An IP address, an interface name such as eth0, or * for every interface.</span></label>
+      <label>Port <input name="port" inputmode="numeric" value="{{.Port}}"><span class="hint">1 to 65535. Ports below 1024 may need administrator rights.</span></label>
+    </div>
+    <datalist id="listen-choices">{{range .Choices}}<option value="{{.Value}}">{{.Label}}</option>{{end}}</datalist>
+    <p class="muted">The new address is tested first; if it cannot be used, nothing changes. Traffic is encrypted (HTTPS) unless plain HTTP was chosen at start-up.</p>
+    <div class="actions"><button class="btn" type="submit" data-confirm="Change the address the web interface listens on?">Change address</button></div>
+  </form>
+  {{end}}
+  {{else}}<p class="muted">Not available in this mode.</p>{{end}}
+</section>
+
+<section class="card">
+  <h2>Test email</h2>
+  <p class="muted">Save your settings first, then send a test message to the recipients above.</p>
+  <div class="actions">
+    <form method="post" action="/settings/test-email" class="inline"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="btn" type="submit">Send test email</button></form>
+    <form method="post" action="/settings/digest-now" class="inline"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="btn" type="submit">Send report email now</button></form>
+  </div>
+</section>
+{{end}}
