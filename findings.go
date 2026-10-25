@@ -13,6 +13,8 @@ var takeoverSuffixes = []string{
 	"azureedge.net", "cloudfront.net", "fastly.net", "pantheonsite.io", "ghost.io", "surge.sh",
 	"bitbucket.io", "wordpress.com", "zendesk.com", "statuspage.io", "unbouncepages.com",
 	"helpjuice.com", "helpscoutdocs.com", "cargocollective.com", "readme.io", "netlify.app", "vercel.app",
+	"azure-api.net", "azurecontainer.io", "azurehdinsight.net", "servicebus.windows.net", "ngrok.io", "launchrock.com",
+	"stats.uptimerobot.com", "stats.pingdom.com", "agilecrm.com", "myjetbrains.com", "furyns.com", "smartjobboard.com",
 }
 
 // takeoverProvider names the claim-able hosting platform a CNAME target belongs to, or "" if it is not a known takeover-prone provider.

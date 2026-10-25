@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
@@ -117,6 +119,8 @@ type WebResult struct {
 	DefaultPg  string // name of the default page that is shown, if any
 	Listing    bool   // directory listing on /
 	Hits       []PathHit
+	Portals    []PortalHit // sign-in pages and consoles recognised (portals.go)
+	SecTxt     string      // apex and www over HTTPS only: "present", "missing", or "" (not checked)
 	BodyHash   string
 	Err        string
 	TLSChecked bool
@@ -152,6 +156,30 @@ type TLSInfo struct {
 	DaysLeft    int
 	Legacy      []string // protocol versions below TLS 1.2 that the server still accepts
 	LegacyKnown bool     // the legacy check completed
+	WeakKey     string   // e.g. "a 1024-bit RSA key" when the key is below 2048-bit RSA strength ("" = fine)
+	WeakSig     string   // e.g. "SHA-1" when the certificate is signed with a broken hash ("" = fine)
+}
+
+// weakCert judges the certificate's own key and signature, which a handshake can
+// accept even when browsers or policies would not.
+func weakCert(leaf *x509.Certificate) (key, sig string) {
+	switch k := leaf.PublicKey.(type) {
+	case *rsa.PublicKey:
+		if n := k.N.BitLen(); n < 2048 {
+			key = fmt.Sprintf("a %d-bit RSA key", n)
+		}
+	case *ecdsa.PublicKey:
+		if n := k.Curve.Params().BitSize; n < 256 {
+			key = fmt.Sprintf("a %d-bit ECDSA key", n)
+		}
+	}
+	switch leaf.SignatureAlgorithm {
+	case x509.MD2WithRSA, x509.MD5WithRSA:
+		sig = "MD5/MD2"
+	case x509.SHA1WithRSA, x509.ECDSAWithSHA1, x509.DSAWithSHA1:
+		sig = "SHA-1"
+	}
+	return key, sig
 }
 
 func tlsVersionName(v uint16) string {
@@ -205,6 +233,7 @@ func (p *Prober) tlsInfo(ctx context.Context, host, ip string, port int) (*TLSIn
 		ti.Issuer = leaf.Issuer.Organization[0]
 	}
 	ti.DaysLeft = int(time.Until(leaf.NotAfter).Hours() / 24)
+	ti.WeakKey, ti.WeakSig = weakCert(leaf)
 	inter := x509.NewCertPool()
 	for _, c := range st.PeerCertificates[1:] {
 		inter.AddCert(c)
@@ -317,16 +346,11 @@ var defaultPages = []struct{ Name, Needle string }{
 	{"Plesk default page", "Web Server's Default Page"},
 	{"cPanel default page", "Default Web Site Page"},
 	{"LiteSpeed default page", "Congratulations! Your website is up and running"},
-	{"Caddy default page", "Caddy web server"},
-	{"Jenkins sign-in", "Sign in [Jenkins]"},
 }
 
 func detectDefaultPage(title string, body []byte) string {
 	b := string(body)
 	for _, d := range defaultPages {
-		if d.Name == "Jenkins sign-in" || d.Name == "Caddy default page" {
-			continue // not a default page: a real application, or too ambiguous
-		}
 		if strings.Contains(b, d.Needle) || strings.Contains(title, d.Needle) {
 			return d.Name
 		}
@@ -364,9 +388,77 @@ var sensitivePaths = []struct {
 		}},
 	{"/.DS_Store", "a macOS folder index file is public and lists file names on the server", "low",
 		func(b []byte, _ http.Header) bool { return len(b) > 8 && string(b[4:8]) == "Bud1" }},
+
+	// Version-control metadata other than Git.
+	{"/.svn/wc.db", "a Subversion working-copy database is readable, so file names and often source code can be recovered", "high",
+		func(b []byte, _ http.Header) bool { return strings.HasPrefix(string(b), "SQLite format 3\x00") }},
+	{"/.hg/requires", "a Mercurial repository is readable, so source code and history can be downloaded", "high",
+		func(b []byte, h http.Header) bool { return notHTML(h) && strings.Contains(string(b), "revlogv1") }},
+	// Credentials and configuration.
+	{"/.htpasswd", "a web server password file is readable; its hashes can be cracked offline", "high",
+		func(b []byte, h http.Header) bool { return notHTML(h) && htpasswdRe.Match(b) }},
+	{"/.aws/credentials", "an AWS credentials file is readable", "high",
+		func(b []byte, h http.Header) bool {
+			return notHTML(h) && strings.Contains(string(b), "aws_access_key_id")
+		}},
+	{"/.npmrc", "an npm configuration file with a registry access token is readable", "high",
+		func(b []byte, h http.Header) bool { return notHTML(h) && strings.Contains(string(b), "_authToken") }},
+	{"/sftp-config.json", "an editor's SFTP deployment settings, with the server password, are readable", "high", isSFTPConfig},
+	{"/.vscode/sftp.json", "an editor's SFTP deployment settings, with the server password, are readable", "high", isSFTPConfig},
+	{"/web.config", "the IIS/ASP.NET configuration file is readable and may hold connection strings and keys", "high",
+		func(b []byte, h http.Header) bool { return notHTML(h) && strings.Contains(string(b), "<configuration") }},
+	{"/docker-compose.yml", "a Docker Compose file is readable; it maps the services and often holds passwords", "medium",
+		func(b []byte, h http.Header) bool {
+			s := string(b)
+			return notHTML(h) && strings.Contains(s, "services:") && (strings.Contains(s, "image:") || strings.Contains(s, "build:"))
+		}},
+	// Database dumps.
+	{"/backup.sql", "a database dump is downloadable", "high", isSQLDump},
+	{"/dump.sql", "a database dump is downloadable", "high", isSQLDump},
+	// Diagnostics that leak internals.
+	{"/info.php", "a PHP information page is public and shows the server's configuration", "medium",
+		func(b []byte, _ http.Header) bool {
+			return strings.Contains(string(b), "phpinfo()") || strings.Contains(string(b), "PHP Version")
+		}},
+	{"/server-info", "the Apache server-information page is public and shows modules and configuration", "medium",
+		func(b []byte, _ http.Header) bool { return strings.Contains(string(b), "Apache Server Information") }},
+	{"/elmah.axd", "the ASP.NET error log is public and shows stack traces, and sometimes cookies and request data", "medium",
+		func(b []byte, _ http.Header) bool { return strings.Contains(string(b), "Error Log for") }},
+	{"/trace.axd", "ASP.NET request tracing is public and shows request details, headers and session data", "medium",
+		func(b []byte, _ http.Header) bool { return strings.Contains(string(b), "Application Trace") }},
+	{"/debug/pprof/", "the Go profiling endpoint is public: it reveals internals and can be used to load the server", "medium",
+		func(b []byte, _ http.Header) bool { return strings.Contains(string(b), "Types of profiles available") }},
+	// API descriptions and cross-domain policy.
+	{"/swagger.json", "an API description is public and maps every endpoint for an attacker (fine only for a deliberately public API)", "low", isAPISpec},
+	{"/openapi.json", "an API description is public and maps every endpoint for an attacker (fine only for a deliberately public API)", "low", isAPISpec},
+	{"/v3/api-docs", "an API description is public and maps every endpoint for an attacker (fine only for a deliberately public API)", "low", isAPISpec},
+	{"/crossdomain.xml", "the Flash/Silverlight cross-domain policy allows any site to read responses as the visitor", "low",
+		func(b []byte, _ http.Header) bool { return strings.Contains(string(b), `allow-access-from domain="*"`) }},
 }
 
-var envFileRe = regexp.MustCompile(`(?m)^[A-Z][A-Z0-9_]{2,}=.*$`)
+var (
+	envFileRe  = regexp.MustCompile(`(?m)^[A-Z][A-Z0-9_]{2,}=.*$`)
+	htpasswdRe = regexp.MustCompile(`(?m)^[^:\s<>]+:(\$apr1\$|\$2[aby]\$|\{SHA\}|\$1\$|\$5\$|\$6\$)`)
+	sqlDumpRe  = regexp.MustCompile(`(?i)(CREATE TABLE|INSERT INTO)\s+[` + "`" + `"\w]`)
+)
+
+// notHTML is true for a response that is not an HTML page (a real file rather than an error or app page).
+func notHTML(h http.Header) bool {
+	return !strings.Contains(strings.ToLower(h.Get("Content-Type")), "html")
+}
+
+func isSFTPConfig(b []byte, h http.Header) bool {
+	s := string(b)
+	return notHTML(h) && strings.Contains(s, `"host"`) && strings.Contains(s, `"password"`)
+}
+
+func isSQLDump(b []byte, h http.Header) bool { return notHTML(h) && sqlDumpRe.Match(b) }
+
+func isAPISpec(b []byte, h http.Header) bool {
+	s := string(b)
+	return strings.Contains(strings.ToLower(h.Get("Content-Type")), "json") &&
+		(strings.Contains(s, `"swagger"`) || strings.Contains(s, `"openapi"`)) && strings.Contains(s, `"paths"`)
+}
 
 // probeWeb examines one web service.
 func (p *Prober) probeWeb(ctx context.Context, host, ip string, port int, scheme string) *WebResult {
@@ -398,6 +490,7 @@ func (p *Prober) probeWeb(ctx context.Context, host, ip string, port int, scheme
 	}
 	sum := sha256.Sum256(root.Body)
 	wr.BodyHash = fmt.Sprintf("%x", sum[:8])
+	wr.Portals = portalsOnPage(root.Status, root.Header, root.Body)
 	if p.cfg.Paths {
 		for _, sp := range sensitivePaths {
 			if ctx.Err() != nil {
@@ -414,8 +507,44 @@ func (p *Prober) probeWeb(ctx context.Context, host, ip string, port int, scheme
 				wr.Hits = append(wr.Hits, PathHit{Path: sp.Path, Why: sp.Why, Severity: sp.Severity})
 			}
 		}
+		found := map[string]bool{}
+		for _, ph := range wr.Portals {
+			found[ph.Name] = true
+		}
+		for _, sig := range portalSigs {
+			if sig.Path == "" || found[sig.Name] || ctx.Err() != nil {
+				continue
+			}
+			r, err := p.fetch(ctx, scheme, host, ip, port, sig.Path)
+			if err != nil {
+				continue
+			}
+			if s := sha256.Sum256(r.Body); r.Status == http.StatusOK && fmt.Sprintf("%x", s[:8]) == wr.BodyHash {
+				continue // a catch-all answering every path with the home page
+			}
+			if matchPortal(sig, r.Status, r.Header, r.Body) {
+				found[sig.Name] = true
+				wr.Portals = append(wr.Portals, PortalHit{Name: sig.Name, Category: sig.Category, Severity: sig.Severity, Path: sig.Path})
+			}
+		}
 	}
 	return wr
+}
+
+// securityTxt checks for the RFC 9116 security.txt that tells researchers how to
+// report a vulnerability: "present", "missing", or "" when the site could not be asked.
+func (p *Prober) securityTxt(ctx context.Context, host, ip string) string {
+	r, err := p.fetch(ctx, "https", host, ip, 443, "/.well-known/security.txt")
+	if err != nil {
+		return ""
+	}
+	if r.Status == http.StatusOK && notHTML(r.Header) && strings.Contains(strings.ToLower(string(r.Body)), "contact:") {
+		return "present"
+	}
+	if r.Status >= 500 {
+		return ""
+	}
+	return "missing"
 }
 
 // ---------------------------------------------------------------- cloud storage

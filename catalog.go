@@ -71,6 +71,38 @@ var findingCatalog = map[string]FindingInfo{
 		Risk:     "Files such as .git folders, .env files, backups and status pages leak source code, passwords, API keys and internal details that let attackers go much further.",
 		Solution: "Block public access to the path in the web server configuration and remove the file from the web root. Treat any secrets in it as compromised and rotate them.",
 	},
+	"login-portal": {
+		Title:  "Login portal or admin console is public",
+		Source: "Active check: the site's home page, and well-known sign-in pages, recognised by the product's own wording",
+		Risk: "VPN and remote-access gateways (Fortinet, Ivanti, Citrix, Palo Alto, Cisco, SonicWall) are the devices attackers exploit first after a vulnerability is published, often within days. " +
+			"Webmail and single sign-on pages attract password spraying. Administration consoles (Tomcat Manager, Jenkins, phpMyAdmin, hypervisors, firewalls, Kubernetes tools) give full control when a password is guessed or a flaw is found.",
+		Solution: "Administration consoles: make them reachable only from an internal network or VPN. Gateways and sign-in pages that must be public: patch within days of vendor advisories, " +
+			"require MFA, rate-limit and monitor failed sign-ins. Accept the risk with a note for portals that are meant to be public.",
+	},
+	"tls-weak-key": {
+		Title:    "TLS certificate uses a weak key",
+		Source:   "Active check: a TLS handshake with the server",
+		Risk:     "RSA keys under 2048 bits (or small elliptic-curve keys) are below what browsers and standards require and are within reach of well-funded attackers.",
+		Solution: "Issue a new certificate with a 2048-bit (or larger) RSA key or a P-256 ECDSA key, and revoke the old one.",
+	},
+	"tls-weak-signature": {
+		Title:    "TLS certificate is signed with SHA-1 or MD5",
+		Source:   "Active check: a TLS handshake with the server",
+		Risk:     "SHA-1 and MD5 signatures can be forged; browsers reject such certificates, so the site shows warnings or fails.",
+		Solution: "Re-issue the certificate with a SHA-256 signature from a current certificate authority.",
+	},
+	"hsts-missing": {
+		Title:    "HTTPS site does not send HSTS",
+		Source:   "Active check: the response headers of the HTTPS site",
+		Risk:     "Without Strict-Transport-Security, a browser may still make its first request over plain HTTP, where an attacker on the network can intercept or redirect it (SSL stripping).",
+		Solution: "Send Strict-Transport-Security: max-age=31536000; includeSubDomains once every name under the domain works over HTTPS.",
+	},
+	"no-security-txt": {
+		Title:    "No security.txt on the main site",
+		Source:   "Active check: a request for /.well-known/security.txt on the domain and www (HTTPS)",
+		Risk:     "Researchers who find a vulnerability have no published way to report it (RFC 9116), so reports get lost or end up public instead.",
+		Solution: "Publish /.well-known/security.txt with at least a Contact: line (an email or form) and an Expires: date.",
+	},
 	"no-https-redirect": {
 		Title:    "HTTP does not redirect to HTTPS",
 		Source:   "Active check: a request to port 80 compared with port 443",

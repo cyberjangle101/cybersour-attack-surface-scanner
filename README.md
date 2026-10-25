@@ -2,7 +2,7 @@
 
 A lightweight, single-binary agent for continuous **External Attack Surface Management (EASM)**. It runs as a persistent background service on Windows or Linux, watches the internet-facing footprint of the organisations you tell it about, and emails you only when something **changes**.
 
-> **Status:** v1.9.6. See "What's new in 1.9" below.
+> **Status:** v1.9.7. See "What's new in 1.9" below. Every check the agent runs is listed in [docs/RULES.md](docs/RULES.md).
 
 ## Why
 
@@ -46,13 +46,29 @@ are emailed only about new subdomains, new IP/DNS records, new certificates and 
 * **Resolution:** A/AAAA/CNAME/NS/MX/TXT via 1.1.1.1 and 8.8.8.8, bounded workers and a global QPS cap, wildcard-DNS detection.
 * **Ownership:** Team Cymru DNS WHOIS (RIPEstat fallback) maps IPs to ASN/organisation; addresses outside your expected ASNs/keywords raise a HIGH finding.
 * **Exposure intelligence:** open ports, CVEs and risk tags per IP, and domain expiry (see below).
-* **Findings:** every finding lists its *source of evidence*, the *risk* and the *recommended fix*. Findings can be acknowledged and auto-resolve when fixed.
+* **Findings:** every finding lists its *source of evidence*, the *risk* and the *recommended fix*. Findings can be acknowledged and auto-resolve when fixed. The full rule list (rule IDs, triggers, severities, and every path, product, port and platform checked) is in **[docs/RULES.md](docs/RULES.md)**, which is generated from the code.
 * **Alerts:** HTML + plaintext email (STARTTLS / implicit TLS), plus an optional daily/weekly digest that includes the same source/risk/fix text.
 * **Reports:** per-domain or all-domain report page, CSV exports (inventory, findings, assets) and JSON.
 * **Users:** admin, analyst and read-only viewer roles; local accounts with optional two-factor sign-in, or Active Directory sign-in (see *What's new in 1.6*).
 
 ## What's new in 1.9
 
+**v1.9.7 (rules reference and new checks):**
+* **[docs/RULES.md](docs/RULES.md) lists every rule** with a stable ID (`EASM-WEB-001` and so on), its trigger, severity, how the evidence is collected, why it matters and what to do, plus every path, product, port, platform and signature the rules use. It is generated from the code, and a test fails if the two disagree.
+* **Login portals and admin consoles (EASM-WEB-001):**
+  * **Remote-access gateways (Medium):** Fortinet, Palo Alto GlobalProtect, Ivanti/Pulse, Citrix, Cisco ASA, SonicWall, Check Point and RD Web Access, the devices behind most recent mass-exploitation campaigns.
+  * **Webmail and SSO (Medium):** Outlook on the web, AD FS.
+  * **Administration consoles (High, or Medium for monitoring tools):** Tomcat Manager, Jenkins, phpMyAdmin, Webmin, cPanel/WHM, Plesk, vCenter/ESXi, Kubernetes Dashboard, Portainer, Rancher, Argo CD, MinIO, RabbitMQ, pfSense, OPNsense, MikroTik, Jupyter, Grafana, Kibana, Prometheus, Zabbix, SonarQube, GitLab, Jira/Confluence, Synology, QNAP.
+  * **Website sign-ins (Low):** WordPress, Joomla, Drupal.
+  * **How they are recognised:** by the product's own page title, header or 401 realm, so a page that only mentions a product, or a site that answers every path, does not count.
+* **20 more sensitive files (EASM-WEB-002):** Subversion and Mercurial metadata, `.htpasswd`, AWS credentials, `.npmrc` tokens, SFTP deployment settings, `web.config`, Docker Compose files, SQL dumps, `info.php`, Apache `server-info`, ASP.NET `elmah.axd`/`trace.axd`, Go `pprof`, public API descriptions and an open `crossdomain.xml`. Each needs a content match.
+* **TLS:** certificates with weak keys (RSA under 2048 bits) or SHA-1/MD5 signatures (EASM-TLS-006/007), and HTTPS sites without HSTS (EASM-TLS-008, Low).
+* **No `security.txt`** on the domain or www (EASM-WEB-004, Low).
+* **More risky ports (EASM-EXP-001):**
+  * **Industrial control (High):** Modbus, Siemens S7, DNP3, EtherNet/IP.
+  * **High:** Kubernetes kubelet and etcd, Cisco Smart Install, Java RMI, Android Debug Bridge.
+  * **Medium:** WinRM over HTTPS, the Docker TLS API, the Kubernetes API, MikroTik Winbox, PPTP, rsync, AJP, WebLogic, GlassFish, Cassandra, InfluxDB, MQTT, printers.
+* **More subdomain-takeover platforms (EASM-DNS-001):** Azure API Management, Container Instances, HDInsight and Service Bus, ngrok, LaunchRock, UptimeRobot and Pingdom status pages, Agile CRM, JetBrains YouTrack, Gemfury, SmartJobBoard.
 **v1.9.6 (deploying on a shared server):**
 * **The first administrator needs a one-time setup code.** Before, whoever submitted the setup page first became administrator, which on a server reachable from the network could be anyone. The code is written to `setup-code.txt` in the data folder, which only administrators can read. On a workstation it is filled in automatically on the page the agent opens. It changes at every start, is never logged, and stops working once the administrator exists.
 * **Services run as their own low-privilege account** (`NT SERVICE\easm-agent`), from `%ProgramFiles%\EASM Agent`, with data in `%ProgramData%\EASM Agent`. They start automatically and restart if they fail. See *Workstation or server*.
