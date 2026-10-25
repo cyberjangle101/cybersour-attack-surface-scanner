@@ -7,6 +7,8 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -38,6 +40,43 @@ var PassphraseSource = func() (string, error) {
 	return "", errors.New("easm.key is passphrase-protected: set the EASM_KEY_PASSPHRASE environment variable (or start the program from a terminal to be prompted)")
 }
 
+// passphraseAttempts is how many passphrases someone at the terminal may try.
+const passphraseAttempts = 3
+
+// passphraseInteractive reports whether PassphraseSource will ask someone at the
+// terminal, who can try again after a typo. A passphrase from the environment
+// (services, tests) gets one attempt.
+var passphraseInteractive = func() bool {
+	return os.Getenv("EASM_KEY_PASSPHRASE") == "" && term.IsTerminal(int(os.Stdin.Fd()))
+}
+
+// promptOut receives the messages shown around the passphrase prompt.
+var promptOut io.Writer = os.Stderr
+
+// unlockKey asks for the passphrase and decrypts the key file, allowing
+// passphraseAttempts tries at a terminal.
+func unlockKey(raw []byte) ([]byte, error) {
+	tries := 1
+	if passphraseInteractive() {
+		tries = passphraseAttempts
+	}
+	for i := 1; ; i++ {
+		pass, err := PassphraseSource()
+		if err != nil {
+			return nil, err
+		}
+		key, err := unwrapKey(raw, pass)
+		if err == nil || !errors.Is(err, errWrongPassphrase) || tries == 1 {
+			return key, err
+		}
+		if i == tries {
+			_, _ = fmt.Fprintln(promptOut, "Incorrect Password. Aborting.")
+			return nil, fmt.Errorf("%w (%d attempts)", err, tries)
+		}
+		_, _ = fmt.Fprintln(promptOut, "Incorrect Password, try again.")
+	}
+}
+
 // OpenVault loads the master key from path, creating a new random key on first run.
 // A passphrase-protected key file is unlocked with PassphraseSource.
 func OpenVault(path string) (*Vault, error) {
@@ -45,11 +84,7 @@ func OpenVault(path string) (*Vault, error) {
 	var key []byte
 	switch {
 	case err == nil && strings.HasPrefix(string(raw), wrappedMagic):
-		pass, perr := PassphraseSource()
-		if perr != nil {
-			return nil, perr
-		}
-		if key, err = unwrapKey(raw, pass); err != nil {
+		if key, err = unlockKey(raw); err != nil {
 			return nil, err
 		}
 	case err == nil:
@@ -100,6 +135,8 @@ func wrapKey(key []byte, pass string) ([]byte, error) {
 	return []byte(wrappedMagic + base64.StdEncoding.EncodeToString(blob) + "\n"), nil
 }
 
+var errWrongPassphrase = errors.New("wrong key-file passphrase")
+
 // unwrapKey decrypts a passphrase-protected key file.
 func unwrapKey(file []byte, pass string) ([]byte, error) {
 	blob, err := base64.StdEncoding.DecodeString(strings.TrimSpace(strings.TrimPrefix(string(file), wrappedMagic)))
@@ -115,7 +152,7 @@ func unwrapKey(file []byte, pass string) ([]byte, error) {
 	ns := g.NonceSize()
 	key, err := g.Open(nil, blob[16:16+ns], blob[16+ns:], []byte(wrappedMagic))
 	if err != nil {
-		return nil, errors.New("wrong key-file passphrase")
+		return nil, errWrongPassphrase
 	}
 	return key, nil
 }

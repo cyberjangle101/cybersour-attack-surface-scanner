@@ -2,7 +2,7 @@
 
 A lightweight, single-binary agent for continuous **External Attack Surface Management (EASM)**. It runs as a persistent background service on Windows or Linux, watches the internet-facing footprint of the organisations you tell it about, and emails you only when something **changes**.
 
-> **Status:** v1.9.1. See "What's new in 1.9" below.
+> **Status:** v1.9.2. See "What's new in 1.9" below.
 
 ## Why
 
@@ -52,6 +52,8 @@ are emailed only about new subdomains, new IP/DNS records, new certificates and 
 * **Users:** admin, analyst and read-only viewer roles; local accounts with optional two-factor sign-in, or Active Directory sign-in (see *What's new in 1.6*).
 
 ## What's new in 1.9
+
+**v1.9.2:** the start-up window shows where the data folder, database and key file are. A wrong key-file passphrase now says "Incorrect Password, try again." and allows three attempts before aborting, and the window stays open for a few seconds so the reason can be read. Passphrases from `EASM_KEY_PASSPHRASE` still get one attempt.
 
 **v1.9.1:** no functional changes. It is the first release that a v1.9.0 agent (the first build carrying the release key) can install itself from *System health → Updates*.
 

@@ -64,6 +64,9 @@ func (p *program) Start(service.Service) error {
 	if p.lock, err = LockDataDirWait(p.boot.DataDir, wait); err != nil {
 		return fail(err)
 	}
+	if term.IsTerminal(int(os.Stdin.Fd())) {
+		printDataLocation(promptOut, p.boot)
+	}
 	if err := ensureKeyFile(p.boot, log); err != nil {
 		return fail(err)
 	}
@@ -311,8 +314,22 @@ func (p *program) Stop(service.Service) error {
 	return nil
 }
 
+// printDataLocation tells the person at the start-up prompt which files it unlocks.
+func printDataLocation(w io.Writer, boot *Bootstrap) {
+	_, _ = fmt.Fprintf(w, "EASM Agent %s\n  Data folder: %s\n  Database:    %s\n  Key file:    %s\n\n",
+		version, boot.DataDir, boot.DBPath(), boot.KeyPath())
+}
+
+// fatalPause keeps a console window the program opened itself (started from
+// Explorer) on screen long enough to read why it is closing.
+const fatalPause = 5 * time.Second
+
 func fatal(err error) {
 	_, _ = fmt.Fprintln(os.Stderr, "error:", err)
+	if ownsConsole() {
+		_, _ = fmt.Fprintf(os.Stderr, "This window closes in %d seconds.\n", int(fatalPause/time.Second))
+		time.Sleep(fatalPause)
+	}
 	os.Exit(1)
 }
 
