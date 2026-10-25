@@ -35,6 +35,8 @@ type Engine struct {
 	mu        sync.Mutex
 	lastPrune time.Time
 	active    map[int64]string // target id -> domain, scans in flight
+	stops     map[int64]context.CancelCauseFunc
+	stopReq   map[int64]error // a stop asked for before the scan registered its cancel func
 	wg        sync.WaitGroup
 	alertMu   sync.Mutex // one alert flush at a time so batches never duplicate
 
@@ -109,7 +111,57 @@ func (e *Engine) claim(t *Target, limit int) bool {
 func (e *Engine) release(t *Target) {
 	e.mu.Lock()
 	delete(e.active, t.ID)
+	delete(e.stops, t.ID)
+	delete(e.stopReq, t.ID)
 	e.mu.Unlock()
+}
+
+// Reasons a running scan is stopped from the web interface.
+var (
+	errScanPaused    = errors.New("monitoring was paused")
+	errScanRestarted = errors.New("restarted with active checks")
+)
+
+// Scanning reports whether a scan of the target is in flight.
+func (e *Engine) Scanning(id int64) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	_, ok := e.active[id]
+	return ok
+}
+
+// StopScan cancels the target's scan in flight, if any, recording why. Nothing
+// from a stopped scan is stored (results are written in one transaction at the end).
+func (e *Engine) StopScan(id int64, why error) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if _, ok := e.active[id]; !ok {
+		return false
+	}
+	if stop := e.stops[id]; stop != nil {
+		stop(why)
+	} else {
+		if e.stopReq == nil {
+			e.stopReq = map[int64]error{}
+		}
+		e.stopReq[id] = why
+	}
+	return true
+}
+
+// stoppable wraps a scan's context so StopScan can cancel it.
+func (e *Engine) stoppable(ctx context.Context, id int64) (context.Context, context.CancelCauseFunc) {
+	sctx, stop := context.WithCancelCause(ctx)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.stops == nil {
+		e.stops = map[int64]context.CancelCauseFunc{}
+	}
+	e.stops[id] = stop
+	if why := e.stopReq[id]; why != nil {
+		stop(why)
+	}
+	return sctx, stop
 }
 
 // Secret returns a decrypted credential ("" if unset or undecryptable).
@@ -219,9 +271,9 @@ func (e *Engine) runDue(ctx context.Context) {
 		e.wg.Add(1)
 		go func(t *Target) {
 			defer e.wg.Done()
-			defer e.release(t)
 			e.scan(ctx, t)
-			e.Wake() // a slot just freed: start the next queued domain without waiting for the tick
+			e.release(t)
+			e.Wake() // a slot just freed: start the next queued domain (or a restart) without waiting for the tick
 		}(t)
 	}
 }
@@ -252,10 +304,13 @@ func (e *Engine) scan(ctx context.Context, t *Target) {
 	}
 	tctx, cancel := context.WithTimeout(ctx, cfg.Schedule.TargetTimeout)
 	defer cancel()
+	tctx, stop := e.stoppable(tctx, t.ID)
+	defer stop(nil)
 	res := NewResolver(tctx, cfg.DNS)
 	sc := e.newScanner(cfg, res)
 	sc.SetHealth(e.health)
 	sc.SetProgress(func(stage string, pct int, detail string) { e.progress.Update(t.ID, stage, pct, detail) })
+	sc.onActive = func() { e.progress.MarkActive(t.ID) }
 
 	var scanErr error
 	func() {
@@ -273,6 +328,9 @@ func (e *Engine) scan(ctx context.Context, t *Target) {
 	case scanErr == nil:
 	case ctx.Err() != nil:
 		status, msg = "interrupted", "agent was stopping"
+	case errors.Is(context.Cause(tctx), errScanPaused), errors.Is(context.Cause(tctx), errScanRestarted):
+		status, msg = "interrupted", "stopped: "+context.Cause(tctx).Error()
+		e.log.Info("scan stopped", "domain", t.Domain, "reason", context.Cause(tctx).Error())
 	case errors.Is(tctx.Err(), context.DeadlineExceeded):
 		status, msg = "error", "scan exceeded the per-target timeout"
 	default:

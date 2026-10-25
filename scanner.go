@@ -30,6 +30,7 @@ type Scanner struct {
 	newEvents int
 
 	progress func(stage string, pct int, detail string) // optional live progress sink
+	onActive func()                                     // optional: told when this scan runs the active checks
 }
 
 // prog reports progress; pct is clamped by the board so the bar never goes backwards.
@@ -166,6 +167,9 @@ func (s *Scanner) scanTarget(ctx context.Context, t *Target) error {
 	if s.store.TakeActiveOnce(root) && !s.cfg.Active.Enabled {
 		s.cfg.Active.Enabled = true // this scan only: the config is rebuilt for every scan
 		log.Info("active checks requested for this scan")
+	}
+	if s.cfg.Active.Enabled && s.onActive != nil {
+		s.onActive()
 	}
 
 	baselineAt, baselined, err := s.store.getMeta("baselined:" + root)

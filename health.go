@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"sort"
 	"strings"
 	"sync"
@@ -50,11 +52,16 @@ func NewHealthBoard() *HealthBoard {
 	return &HealthBoard{items: map[string]*HealthItem{}, last: map[string]int{}}
 }
 
+// cancelled reports whether err only means the work was called off.
+func cancelled(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, errScanPaused) || errors.Is(err, errScanRestarted)
+}
+
 // Record notes the outcome of one call. Errors are stored truncated and with any
 // secrets the caller registered already stripped (see redact).
 func (h *HealthBoard) Record(name, via string, ok bool, d time.Duration, err error) {
-	if h == nil {
-		return
+	if h == nil || (!ok && cancelled(err)) {
+		return // a scan stopped by the agent or a user says nothing about the connector
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()

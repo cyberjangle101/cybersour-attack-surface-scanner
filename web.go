@@ -110,9 +110,10 @@ func NewServer(store *Store, eng *Engine, log *slog.Logger, boot *Bootstrap) (*S
 		"hasPrefix": strings.HasPrefix,
 		"finfo":     describeFinding,
 		"roleLabel": roleLabel,
-		"tctx": func(f Finding, csrf, next string) map[string]any {
-			return map[string]any{"F": f, "CSRF": csrf, "Next": next}
+		"tctx": func(f Finding, csrf, next string, admin bool) map[string]any {
+			return map[string]any{"F": f, "CSRF": csrf, "Next": next, "Admin": admin}
 		},
+		"verifyLabel": verifyLabel,
 		"add":    func(a, b int) int { return a + b },
 		"sub":    func(a, b int) int { return a - b },
 		"join":   strings.Join,
@@ -247,6 +248,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /findings/{id}/ack", s.auth(permTriage, s.findingAccept))
 	mux.HandleFunc("POST /findings/{id}/reopen", s.auth(permTriage, s.findingReopen))
 	mux.HandleFunc("POST /findings/{id}/severity", s.auth(permTriage, s.findingSeverity))
+	mux.HandleFunc("POST /findings/{id}/verify", s.auth(permAdmin, s.findingVerify))
 	mux.HandleFunc("GET /events", s.auth(permView, s.events))
 	mux.HandleFunc("GET /assets", s.auth(permView, s.assets))
 	mux.HandleFunc("GET /assets.csv", s.auth(permView, s.assetsCSV))
@@ -1017,6 +1019,19 @@ func (s *Server) targetScan(w http.ResponseWriter, r *http.Request, sess *Sessio
 		s.renderError(w, r, sess, http.StatusForbidden, "Not allowed", "Only an administrator can start a scan with active checks.")
 		return
 	}
+	if active && t.Enabled && s.eng.Scanning(t.ID) {
+		// A scan is already under way without active checks: stop it and start again
+		// with them, rather than refusing (the passive scan would otherwise carry on).
+		if err := s.store.SetActiveOnce(t.Domain); err != nil {
+			s.serverError(w, r, sess, err)
+			return
+		}
+		s.eng.StopScan(t.ID, errScanRestarted)
+		s.audit(sess, r, "scan.active", t.Domain, "running scan restarted with active checks")
+		s.flash(sess, "good", "The running scan was stopped and is starting again with active checks: the agent will connect to this domain's servers for this scan only.")
+		s.backToTarget(w, r, t.ID)
+		return
+	}
 	ok, err := s.store.RequestScan(t.ID)
 	if err == nil && ok && refresh {
 		err = s.store.SetRefresh(t.Domain, true)
@@ -1045,14 +1060,18 @@ func (s *Server) targetScan(w http.ResponseWriter, r *http.Request, sess *Sessio
 	s.backToTarget(w, r, t.ID)
 }
 
-// targetPause stops scheduled scans.
+// targetPause stops scheduled scans and the scan in flight, if any.
 func (s *Server) targetPause(w http.ResponseWriter, r *http.Request, sess *Session) {
 	if t := s.loadTarget(w, r, sess); t != nil {
 		if err := s.store.SetTargetEnabled(t.ID, false); err != nil {
 			s.serverError(w, r, sess, err)
 			return
 		}
-		s.flash(sess, "good", "Monitoring paused. Existing data is kept.")
+		if s.eng.StopScan(t.ID, errScanPaused) {
+			s.flash(sess, "good", "Monitoring paused and the running scan was stopped. Existing data is kept; the stopped scan saved nothing.")
+		} else {
+			s.flash(sess, "good", "Monitoring paused. Existing data is kept.")
+		}
 		s.backToTarget(w, r, t.ID)
 	}
 }
@@ -1768,10 +1787,11 @@ func (s *Server) progressJSON(w http.ResponseWriter, _ *http.Request, _ *Session
 		Percent int    `json:"percent"`
 		Elapsed int    `json:"elapsed"`
 		Idle    int    `json:"idle"`
+		Active  bool   `json:"active"`
 	}
 	out := []item{}
 	for _, p := range s.eng.Progress().Snapshot() {
-		out = append(out, item{p.ID, p.Domain, p.Stage, p.Detail, p.Percent, p.Elapsed, p.IdleSecs})
+		out = append(out, item{p.ID, p.Domain, p.Stage, p.Detail, p.Percent, p.Elapsed, p.IdleSecs, p.Active})
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
