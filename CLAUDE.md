@@ -99,6 +99,9 @@ Always test the feature that changed, plus anything it could break. Add a Go tes
   (`gh pr create` fails here because GraphQL is blocked).
 - `main` needs the Security Scan workflow to pass and owner approval. Do not try to bypass it.
 - Pushes to a branch with no PR are refused by the code-scanning rule (except the push that creates it): push once, then open the PR.
+- After every code change or release is merged, run the release workflow to build a new exe and publish it on the Releases page:
+  bump the version in the README, tag `vX.Y.Z` on the merge commit and push the tag. Never upload hand-built exes to Releases
+  (they carry no release key or signed `SHA256SUMS`, so agents cannot update from them).
 - Publishing is tag-driven: after the PR merges, tag `vX.Y.Z` on `main` and push the tag. `.github/workflows/release.yml` builds,
   scans, signs `SHA256SUMS` with the `EASM_RELEASE_SIGNING_KEY` secret and publishes. See RELEASING.md. Never handle the private key.
 - Installed agents self-update from those releases (`update.go`): never weaken the signature, version-header or GitHub-host checks.
