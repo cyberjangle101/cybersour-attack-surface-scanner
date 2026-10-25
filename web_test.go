@@ -834,11 +834,13 @@ func TestWebAPIKeys(t *testing.T) {
 	f.Set("censys_org_id", "org-1234")
 	f.Set("virustotal_enabled", "on")
 	f.Set("virustotal_key", "vt-key-abcdef123456")
+	f.Set("otx_enabled", "on")
+	f.Set("otx_key", "otx-key-abcdef123456")
 	if code, _, _ := b.post("/settings", f); code != 303 {
 		t.Fatalf("save: %d", code)
 	}
 	got, _ := e.store.LoadSettings()
-	if !got.ShodanEnabled || !got.CensysEnabled || !got.VirusTotalEnabled || got.CensysOrgID != "org-1234" {
+	if !got.ShodanEnabled || !got.CensysEnabled || !got.VirusTotalEnabled || !got.OTXEnabled || got.CensysOrgID != "org-1234" {
 		t.Errorf("settings not saved: %+v", got)
 	}
 	if e.eng.Secret(secretShodan) != key {
@@ -850,7 +852,7 @@ func TestWebAPIKeys(t *testing.T) {
 		t.Errorf("key stored in clear (raw=%q)", raw)
 	}
 	_, body, _ := b.get("/settings")
-	for _, secret := range []string{key, "censys-token-abc123456", "vt-key-abcdef123456"} {
+	for _, secret := range []string{key, "censys-token-abc123456", "vt-key-abcdef123456", "otx-key-abcdef123456"} {
 		if strings.Contains(body, secret) {
 			t.Errorf("settings page echoes a secret: %s", secret)
 		}
@@ -867,6 +869,9 @@ func TestWebAPIKeys(t *testing.T) {
 	cfg, _, _ := e.eng.config()
 	if !cfg.Intel.Shodan.Enabled || cfg.Intel.Shodan.Key != key || !cfg.Intel.Censys.Enabled || cfg.Intel.Censys.OrgID != "org-1234" {
 		t.Errorf("runtime intel config: %+v", cfg.Intel)
+	}
+	if !cfg.Sources.OTX.Enabled || cfg.Sources.OTX.Key != "otx-key-abcdef123456" {
+		t.Errorf("runtime OTX config: %+v", cfg.Sources.OTX)
 	}
 	// clearing a key while the source stays enabled is refused; disabling and clearing works
 	f = settingsFormWith(got, map[string]string{"shodan_enabled": "on", "shodan_key_clear": "on", "censys_enabled": "on", "virustotal_enabled": "on"})

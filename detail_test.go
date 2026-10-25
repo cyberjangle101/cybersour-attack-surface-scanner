@@ -178,7 +178,7 @@ func TestConnectorsWithoutKeysAreCounted(t *testing.T) {
 	b.setup("admin", "correct horse battery")
 	// defaults: keyed sources are switched off, but they still cannot work without a key
 	_, body, _ := b.get("/health")
-	if !strings.Contains(body, `<div class="n">6</div><div class="l">Need an API key</div>`) {
+	if !strings.Contains(body, `<div class="n">7</div><div class="l">Need an API key</div>`) {
 		t.Errorf("keyed connectors without a key are not counted:\n%.0s", body)
 	}
 	if !strings.Contains(body, "Add the API key in Settings") {

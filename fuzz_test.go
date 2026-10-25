@@ -50,10 +50,16 @@ func FuzzParseHostLists(f *testing.F) {
 	f.Add("error check your search parameter")
 	f.Add(`{"passive_dns":[{"hostname":"x.example.test"}]}`)
 	f.Add(`["a.example.test","b.example.test"]`)
+	f.Add(`{"detail": "Anonymous access to this endpoint is limited. Please authenticate."}`)
+	f.Add(`<title>Attention Required! | Cloudflare</title>`)
 	f.Fuzz(func(t *testing.T, body string) {
 		_, _ = parseHackerTarget(strings.NewReader(body))
 		_, _ = parseOTX(strings.NewReader(body))
 		_, _ = parseAnubis(strings.NewReader(body))
+		for _, status := range []int{403, 429, 503} {
+			_ = otxRefused(status, []byte(body))
+			_ = anubisRefused(status, []byte(body))
+		}
 	})
 }
 

@@ -222,7 +222,7 @@ func (e *Engine) config() (*Config, Settings, error) {
 	}
 	return st.RuntimeWith(Secrets{
 		SMTP: e.SMTPPassword(), Shodan: e.Secret(secretShodan), Censys: e.Secret(secretCensys), VirusTotal: e.Secret(secretVT),
-		HIBP: e.Secret(secretHIBP), GitHub: e.Secret(secretGitHub),
+		HIBP: e.Secret(secretHIBP), GitHub: e.Secret(secretGitHub), OTX: e.Secret(secretOTX),
 	}), st, nil
 }
 

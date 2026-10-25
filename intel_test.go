@@ -334,8 +334,12 @@ func TestHealthChecksAndStatuses(t *testing.T) {
 	st, _ := h.store.LoadSettings()
 	st.ShodanEnabled, st.CensysEnabled = true, true // enabled, but only Shodan gets a key
 	st.AnubisEnabled = false
+	st.OTXEnabled = true
 	h.saveSettings(st)
 	if err := h.eng.SetSecret(secretShodan, "SHODAN-KEY-0123456789"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.eng.SetSecret(secretOTX, "OTX-KEY-0123456789"); err != nil {
 		t.Fatal(err)
 	}
 	h.intel.shodanKey = "SHODAN-KEY-0123456789"
@@ -347,7 +351,7 @@ func TestHealthChecksAndStatuses(t *testing.T) {
 		t.Errorf("the SMTP check must not send mail (%d -> %d)", mailsBefore, got)
 	}
 	cur, _ := h.store.LoadSettings()
-	have := map[string]bool{secretShodan: true}
+	have := map[string]bool{secretShodan: true, secretOTX: true}
 	state := map[string]string{}
 	for _, c := range Connectors(cur, have) {
 		it, seen := h.eng.Health().Get(c.ID)

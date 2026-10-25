@@ -136,8 +136,8 @@ func DefaultSettings() Settings {
 		CrtShTimeoutSeconds: 120,
 		CrtShMaxAttempts:    5,
 		HackerTargetEnabled: true,
-		OTXEnabled:          true,
-		AnubisEnabled:       true,
+		OTXEnabled:          false, // needs a free API key since OTX closed anonymous passive DNS
+		AnubisEnabled:       false, // jonlu.ca sits behind a Cloudflare bot challenge that refuses non-browser clients
 
 		DNSResolvers:      []string{"1.1.1.1:53", "8.8.8.8:53"},
 		DNSWorkers:        20,
@@ -318,7 +318,6 @@ func (s Settings) RuntimeWith(sec Secrets) *Config {
 				MaxAttempts: s.CrtShMaxAttempts, BaseBackoff: 5 * time.Second, MaxBackoff: 2 * time.Minute,
 			},
 			HackerTarget: Toggle{s.HackerTargetEnabled},
-			OTX:          Toggle{s.OTXEnabled},
 			Anubis:       Toggle{s.AnubisEnabled},
 			UserAgent:    "easm-agent/" + version + " (+defensive attack-surface monitoring)",
 		},
@@ -343,6 +342,7 @@ func (s Settings) RuntimeWith(sec Secrets) *Config {
 		RetentionDays: s.EventRetentionDays,
 		PublicURL:     s.PublicURL,
 	}
+	c.Sources.OTX.Enabled, c.Sources.OTX.Key = s.OTXEnabled && sec.OTX != "", sec.OTX
 	in := &c.Intel
 	in.InternetDB, in.RDAP = s.InternetDBEnabled, s.RDAPEnabled
 	in.Shodan.Enabled, in.Shodan.Key, in.Shodan.DomainLookup = s.ShodanEnabled && sec.Shodan != "", sec.Shodan, s.ShodanDomainLookup
