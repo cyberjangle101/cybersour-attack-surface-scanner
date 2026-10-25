@@ -231,6 +231,15 @@ func TestNormalizeHostAndParsers(t *testing.T) {
 	if err != nil || asn != 13335 || prefix != "1.1.1.0/24" || cc != "AU" {
 		t.Errorf("cymru parse: %d %q %q %v", asn, prefix, cc, err)
 	}
+	// A negative, signed or out-of-range ASN is malformed (found by FuzzCymruAndEmailPolicy).
+	for _, bad := range []string{"-1||", "-13335 | 1.1.1.0/24 | AU", "+13335 | 1.1.1.0/24 | AU", "4294967296 | 1.1.1.0/24 | AU"} {
+		if asn, _, _, err := parseCymruOrigin(bad); err == nil {
+			t.Errorf("parseCymruOrigin(%q) = %d, want error", bad, asn)
+		}
+	}
+	if asn, _, _, err := parseCymruOrigin("4294967295 | 1.1.1.0/24 | AU"); err != nil || asn != 4294967295 {
+		t.Errorf("max 32-bit ASN: %d %v", asn, err)
+	}
 	if got := cymruOriginName(netIP("8.8.4.4")); got != "4.4.8.8.origin.asn.cymru.com" {
 		t.Errorf("cymru v4 name %s", got)
 	}

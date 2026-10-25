@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -161,11 +162,15 @@ func parseCymruOrigin(s string) (asn int, prefix, cc string, err error) {
 	if len(f) == 0 {
 		return 0, "", "", errors.New("empty ASN field")
 	}
-	asn, err = strconv.Atoi(f[0]) // MOAS prefixes list several ASNs; take the first
+	// MOAS prefixes list several ASNs; take the first. ASNs are unsigned 32-bit, so a sign or overflow means a malformed record.
+	n, err := strconv.ParseUint(f[0], 10, 32)
 	if err != nil {
-		return 0, "", "", err
+		return 0, "", "", fmt.Errorf("bad ASN in cymru origin record: %w", err)
 	}
-	return asn, strings.TrimSpace(parts[1]), strings.TrimSpace(parts[2]), nil
+	if n > uint64(math.MaxInt) {
+		return 0, "", "", fmt.Errorf("ASN out of range for int: %d", n)
+	}
+	return int(n), strings.TrimSpace(parts[1]), strings.TrimSpace(parts[2]), nil
 }
 
 // cymru asks Team Cymru's DNS WHOIS which AS announces ip and resolves the AS name.
