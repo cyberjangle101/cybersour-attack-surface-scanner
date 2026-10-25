@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -94,8 +95,20 @@ func installProgram() (string, error) {
 }
 
 // grantServiceData limits the data folder to the service account, SYSTEM and Administrators.
+// The administrator running the install was given the folder while it was prepared; that
+// personal grant is taken away again, so it does not outlive their job or their account
+// (they keep access as a member of Administrators).
 func grantServiceData(dir, account string) error {
-	return restrictDirFor(dir, account)
+	if err := restrictDirFor(dir, account); err != nil {
+		return err
+	}
+	if me := currentUserSID(); me != "" && me != "S-1-5-18" && !strings.EqualFold(me, account) {
+		out, err := exec.Command("icacls", dir, "/remove:g", "*"+me).CombinedOutput() //nolint:gosec // G204: fixed program, arguments are the data folder and this process's SID
+		if err != nil {
+			return fmt.Errorf("removing the installing account from %s: %v: %s", dir, err, out)
+		}
+	}
+	return nil
 }
 
 // installedServiceAddress returns the web address of an installed easm-agent service

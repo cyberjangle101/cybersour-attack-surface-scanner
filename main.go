@@ -571,12 +571,7 @@ func main() {
 		return
 	}
 
-	args := []string{"-data-dir", boot.DataDir, "-listen", boot.Listen}
-	if *cfgPath != "" {
-		if abs, err := filepath.Abs(*cfgPath); err == nil {
-			args = append(args, "-config", abs)
-		}
-	}
+	args := serviceArgs(boot, *cfgPath, *plainHTTP, *noPass)
 	prg := &program{boot: boot}
 	cfg := &service.Config{
 		Name: "easm-agent", DisplayName: "EASM Agent",
@@ -637,6 +632,24 @@ func main() {
 			printServiceInstalled(boot, cfg.Executable, account)
 		}
 	}
+}
+
+// serviceArgs is the command line the service manager starts the agent with. Options
+// given with -service install must apply to every start, not only to the install.
+func serviceArgs(boot *Bootstrap, cfgPath string, plainHTTP, noPass bool) []string {
+	args := []string{"-data-dir", boot.DataDir, "-listen", boot.Listen}
+	if plainHTTP {
+		args = append(args, "-plain-http")
+	}
+	if noPass {
+		args = append(args, "-no-passphrase")
+	}
+	if cfgPath != "" {
+		if abs, err := filepath.Abs(cfgPath); err == nil {
+			args = append(args, "-config", abs)
+		}
+	}
+	return args
 }
 
 // printServiceInstalled locks the data folder to the service account and tells the

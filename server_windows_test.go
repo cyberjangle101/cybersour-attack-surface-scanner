@@ -54,6 +54,36 @@ func TestRestrictDirGrantsOwnAccount(t *testing.T) {
 	}
 }
 
+// After an install the data folder belongs to the service account, SYSTEM and Administrators
+// only: the installing administrator's personal grant is removed.
+func TestGrantServiceDataDropsInstaller(t *testing.T) {
+	dir := t.TempDir()
+	me := currentUserSID()
+	t.Cleanup(func() { _ = exec.Command("icacls", dir, "/grant", "*"+me+":(OI)(CI)F").Run() }) // owner can always restore access, so TempDir can clean up
+	if err := grantServiceData(dir, `NT AUTHORITY\LOCAL SERVICE`); err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.Command("icacls", dir).CombinedOutput()
+	if err != nil {
+		t.Fatal(err)
+	}
+	acl := strings.ToLower(string(out))
+	if !strings.Contains(acl, `nt authority\local service`) || strings.Contains(acl, strings.ToLower(windowsAccount())) {
+		t.Errorf("the folder must name the service account and not the installer:\n%s", out)
+	}
+}
+
+func TestServiceArgsKeepInstallOptions(t *testing.T) {
+	b := &Bootstrap{DataDir: `C:\ProgramData\EASM Agent`, Listen: "127.0.0.1:18557"}
+	got := strings.Join(serviceArgs(b, "", true, true), " ")
+	if !strings.Contains(got, "-plain-http") || !strings.Contains(got, "-no-passphrase") || !strings.Contains(got, "-listen 127.0.0.1:18557") {
+		t.Errorf("install options lost: %s", got)
+	}
+	if got := strings.Join(serviceArgs(b, "", false, false), " "); strings.Contains(got, "-plain-http") || strings.Contains(got, "-no-passphrase") {
+		t.Errorf("options added that were not asked for: %s", got)
+	}
+}
+
 func TestServiceHelpers(t *testing.T) {
 	if a := restrictArgs(`C:\d`, "S-1-5-80-1"); a[len(a)-1] != "*S-1-5-80-1:(OI)(CI)F" {
 		t.Errorf("a SID is granted with *: %v", a)
