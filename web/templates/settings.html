@@ -97,7 +97,7 @@
 
   <section class="card">
     <h2>Data sources</h2>
-    <p class="muted">All free and unauthenticated. The agent only queries these public services and public DNS resolvers; it never sends traffic to your domains.</p>
+    <p class="muted">All free; only AlienVault OTX needs a (free) API key. The agent only queries these public services and public DNS resolvers; it never sends traffic to your domains.</p>
     <div class="grid">
       <label class="check"><input type="checkbox" name="crtsh_enabled" {{if .S.CrtShEnabled}}checked{{end}}> crt.sh (Certificate Transparency)</label>
       <label class="check"><input type="checkbox" name="hackertarget_enabled" {{if .S.HackerTargetEnabled}}checked{{end}}> HackerTarget host search <span class="hint">Free tier: roughly 50 queries per day.</span></label>
