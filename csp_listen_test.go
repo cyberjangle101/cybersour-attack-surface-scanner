@@ -21,7 +21,7 @@ func TestContentSecurityPolicyIsComplete(t *testing.T) {
 	for _, d := range []string{"default-src 'none'", "script-src 'self'", "style-src 'self'", "img-src 'self' data:", "font-src 'none'",
 		"connect-src 'self'", "media-src 'none'", "object-src 'none'", "frame-src 'none'", "child-src 'none'", "worker-src 'none'",
 		"manifest-src 'none'", "form-action 'self'", "frame-ancestors 'none'", "base-uri 'none'", "require-trusted-types-for 'script'",
-		"report-uri /csp-report"} {
+		"report-uri /csp-report", "report-to csp"} {
 		if !strings.Contains(csp, d) {
 			t.Errorf("CSP lacks %q: %s", d, csp)
 		}
@@ -41,6 +41,10 @@ func TestContentSecurityPolicyIsComplete(t *testing.T) {
 		if r.Header.Get(h) == "" {
 			t.Errorf("missing header %s", h)
 		}
+	}
+	// report-to names the endpoint group; it must point at the same handler as report-uri
+	if got := r.Header.Get("Reporting-Endpoints"); got != `csp="/csp-report"` {
+		t.Errorf("Reporting-Endpoints = %q", got)
 	}
 }
 
@@ -69,6 +73,12 @@ func TestCSPReportEndpoint(t *testing.T) {
 	req.Header.Set("Content-Type", "application/csp-report")
 	if code, _, _ := b.do(req); code != 204 {
 		t.Errorf("csp-report = %d, want 204", code)
+	}
+	// browsers using report-to send the Reporting API format
+	req, _ = http.NewRequest("POST", b.base+"/csp-report", strings.NewReader(`[{"type":"csp-violation","body":{"blockedURL":"inline"}}]`))
+	req.Header.Set("Content-Type", "application/reports+json")
+	if code, _, _ := b.do(req); code != 204 {
+		t.Errorf("reports+json = %d, want 204", code)
 	}
 	if code, _, _ := b.get("/csp-report"); code != 405 {
 		t.Errorf("GET /csp-report = %d, want 405", code)

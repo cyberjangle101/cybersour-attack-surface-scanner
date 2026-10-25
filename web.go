@@ -59,6 +59,7 @@ type Session struct {
 type failRec struct {
 	count   int
 	first   time.Time
+	last    time.Time
 	blocked time.Time
 }
 
@@ -644,34 +645,6 @@ func (s *Server) loginForm(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, nil, "login", http.StatusOK, map[string]any{"Title": "Sign in", "PreCSRF": s.preCSRF(w, r)})
 }
 
-const (
-	maxFails  = 5
-	failSpan  = 15 * time.Minute
-	blockSpan = 10 * time.Minute
-)
-
-func (s *Server) throttled(ip string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	f := s.fails[ip]
-	return f != nil && time.Now().Before(f.blocked)
-}
-
-// recordFail counts a failed sign-in for throttling.
-func (s *Server) recordFail(ip string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	f := s.fails[ip]
-	if f == nil || time.Since(f.first) > failSpan {
-		f = &failRec{first: time.Now()}
-		s.fails[ip] = f
-	}
-	f.count++
-	if f.count >= maxFails {
-		f.blocked = time.Now().Add(blockSpan)
-	}
-}
-
 // loginSubmit checks credentials in constant time and starts a session.
 func (s *Server) loginSubmit(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxFormBytes)
@@ -683,15 +656,16 @@ func (s *Server) loginSubmit(w http.ResponseWriter, r *http.Request) {
 	again := func(status int, msg string) {
 		s.render(w, r, nil, "login", status, map[string]any{"Title": "Sign in", "PreCSRF": s.preCSRF(w, r), "Error": msg, "Username": r.PostFormValue("username")})
 	}
-	if s.throttled(ip) {
+	typed := strings.TrimSpace(r.PostFormValue("username"))
+	keys := signInKeys(ip, typed)
+	if s.throttled(keys) {
 		again(http.StatusTooManyRequests, "Too many failed attempts. Try again in a few minutes.")
 		return
 	}
-	typed := strings.TrimSpace(r.PostFormValue("username"))
 	u, why := s.authenticate(r, typed, r.PostFormValue("password"))
 	if u == nil {
 		if !why.neutral {
-			s.recordFail(ip)
+			s.recordFail(keys)
 		}
 		s.log.Warn("failed sign-in", "ip", ip)
 		s.auditAs(typed, "", r, "login.fail", "", why.audit)
@@ -708,9 +682,7 @@ func (s *Server) loginSubmit(w http.ResponseWriter, r *http.Request) {
 // finishLogin starts the session once every required check has passed.
 func (s *Server) finishLogin(w http.ResponseWriter, r *http.Request, u *User) {
 	ip := clientIP(r)
-	s.mu.Lock()
-	delete(s.fails, ip)
-	s.mu.Unlock()
+	s.clearFails(signInKeys(ip, u.Username))
 	sess := s.newSession(w, u)
 	if st, err := s.store.LoadSettings(); err == nil && st.Require2FA && u.Kind == kindLocal && !u.TOTPOn {
 		s.mu.Lock()
@@ -1255,13 +1227,22 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, sess *Session) {
 
 // ---------------------------------------------------------------- reports
 
+// errUnknownTarget is a report asked for a domain that is not monitored. Falling back to
+// "All targets" would hand back far more than was asked for, under the wrong title.
+var errUnknownTarget = errors.New("unknown domain: not a monitored target")
+
 // reportParams reads the report period and scope from the query.
 func (s *Server) reportParams(r *http.Request) (root string, days int, names []string, err error) {
 	names, err = s.targetNames()
 	if err != nil {
 		return
 	}
-	root = validRoot(names, r.URL.Query().Get("target"))
+	asked := r.URL.Query().Get("target")
+	root = validRoot(names, asked)
+	if asked != "" && root == "" {
+		err = errUnknownTarget
+		return
+	}
 	days, _ = strconv.Atoi(r.URL.Query().Get("days"))
 	switch days {
 	case 1, 7, 30, 90, 365:
@@ -1269,6 +1250,16 @@ func (s *Server) reportParams(r *http.Request) (root string, days int, names []s
 		days = 7
 	}
 	return
+}
+
+// reportError answers a failed reportParams: 404 for an unknown domain, 500 otherwise.
+func (s *Server) reportError(w http.ResponseWriter, r *http.Request, sess *Session, err error) {
+	if errors.Is(err, errUnknownTarget) {
+		s.renderError(w, r, sess, http.StatusNotFound, "Unknown domain",
+			"No monitored domain has that name. Pick one from the list, or leave it empty for a report on all domains.")
+		return
+	}
+	s.serverError(w, r, sess, err)
 }
 
 // reportOpts reads the severity filter from the query string.
@@ -1287,7 +1278,7 @@ func reportQuery(root string, days int, o ReportOpts) string {
 func (s *Server) report(w http.ResponseWriter, r *http.Request, sess *Session) {
 	root, days, names, err := s.reportParams(r)
 	if err != nil {
-		s.serverError(w, r, sess, err)
+		s.reportError(w, r, sess, err)
 		return
 	}
 	opts := reportOpts(r)
@@ -1307,7 +1298,7 @@ func (s *Server) report(w http.ResponseWriter, r *http.Request, sess *Session) {
 func (s *Server) reportPDF(w http.ResponseWriter, r *http.Request, sess *Session) {
 	root, days, _, err := s.reportParams(r)
 	if err != nil {
-		s.serverError(w, r, sess, err)
+		s.reportError(w, r, sess, err)
 		return
 	}
 	rep, err := BuildReportOpts(s.store, root, time.Now().Add(-time.Duration(days)*24*time.Hour), 200, reportOpts(r))
@@ -1336,7 +1327,7 @@ func (s *Server) reportCSV(kind string) authed {
 	return func(w http.ResponseWriter, r *http.Request, sess *Session) {
 		root, days, _, err := s.reportParams(r)
 		if err != nil {
-			s.serverError(w, r, sess, err)
+			s.reportError(w, r, sess, err)
 			return
 		}
 		rep, err := BuildReportOpts(s.store, root, time.Now().Add(-time.Duration(days)*24*time.Hour), 200000, reportOpts(r))
@@ -1359,7 +1350,7 @@ func (s *Server) reportCSV(kind string) authed {
 func (s *Server) reportJSON(w http.ResponseWriter, r *http.Request, sess *Session) {
 	root, days, _, err := s.reportParams(r)
 	if err != nil {
-		s.serverError(w, r, sess, err)
+		s.reportError(w, r, sess, err)
 		return
 	}
 	rep, err := BuildReportOpts(s.store, root, time.Now().Add(-time.Duration(days)*24*time.Hour), 200000, reportOpts(r))

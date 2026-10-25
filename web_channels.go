@@ -183,7 +183,7 @@ func (s *Server) reportFindings(r *http.Request) ([]apiFinding, error) {
 func (s *Server) reportSARIF(w http.ResponseWriter, r *http.Request, sess *Session) {
 	fs, err := s.reportFindings(r)
 	if err != nil {
-		s.serverError(w, r, sess, err)
+		s.reportError(w, r, sess, err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/sarif+json")
@@ -194,7 +194,7 @@ func (s *Server) reportSARIF(w http.ResponseWriter, r *http.Request, sess *Sessi
 func (s *Server) reportSTIX(w http.ResponseWriter, r *http.Request, sess *Session) {
 	fs, err := s.reportFindings(r)
 	if err != nil {
-		s.serverError(w, r, sess, err)
+		s.reportError(w, r, sess, err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/stix+json;version=2.1")

@@ -205,7 +205,7 @@ By default the web interface listens on `127.0.0.1:8080` (this computer only). C
   browser's certificate details) matches, then accept it. To avoid the warning, use your own certificate
   (`tls_cert` / `tls_key`) or put the agent behind a TLS reverse proxy and set `secure_cookies: true`.
   Plain HTTP is only used if you ask for it (`-plain-http` or `plain_http: true`).
-* Passwords are bcrypt-hashed; login attempts are throttled; CSRF tokens on all changes.
+* Passwords are bcrypt-hashed; login attempts are throttled per account and address, with back-off; CSRF tokens on all changes.
 * **Content Security Policy** on every response: everything is blocked by default (`default-src 'none'`); scripts and styles only from this site (no inline code, no `eval`); no frames, plug-ins, workers, fonts or media; forms post only to this site; pages cannot be framed or re-based; `require-trusted-types-for 'script'` blocks DOM script-injection; `upgrade-insecure-requests` over HTTPS. Violations the browser reports are logged. `Permissions-Policy`, cross-origin isolation headers and HSTS are set as well.
 * The database is encrypted at rest (see *Encryption at rest*). The data folder is created with owner-only permissions.
 * Sessions are held in memory, so everyone is signed out when the agent restarts.

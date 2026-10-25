@@ -104,7 +104,8 @@ func apiJSON(w http.ResponseWriter, v any) {
 func (s *Server) api(need int, h apiHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ip := clientIP(r)
-		if s.throttled(ip) {
+		keys := apiKeys(ip)
+		if s.throttled(keys) {
 			apiError(w, http.StatusTooManyRequests, "too many failed attempts; try again later")
 			return
 		}
@@ -112,20 +113,18 @@ func (s *Server) api(need int, h apiHandler) http.HandlerFunc {
 		tok, ok := strings.CutPrefix(auth, "Bearer ")
 		tok = strings.TrimSpace(tok)
 		if !ok || !strings.HasPrefix(tok, tokenPrefix) || len(tok) > 200 {
-			s.recordFail(ip)
+			s.recordFail(keys)
 			apiError(w, http.StatusUnauthorized, "send the header  Authorization: Bearer <token>")
 			return
 		}
 		t, u, err := s.store.TokenByPlain(tok)
 		if err != nil {
-			s.recordFail(ip)
+			s.recordFail(keys)
 			s.log.Warn("API token rejected", "ip", ip, "reason", err.Error())
 			apiError(w, http.StatusUnauthorized, "the token is not valid, or has expired or been revoked")
 			return
 		}
-		s.mu.Lock()
-		delete(s.fails, ip)
-		s.mu.Unlock()
+		s.clearFails(keys)
 		role := t.Role
 		if roleLevel(u.Role) < roleLevel(role) {
 			role = u.Role // an account that has been demoted takes its tokens down with it
@@ -294,7 +293,19 @@ func (s *Server) apiSTIX(w http.ResponseWriter, r *http.Request, _ *apiWho) {
 
 func (s *Server) apiReport(w http.ResponseWriter, r *http.Request, who *apiWho) {
 	days := qInt(r, "days", 30, 1, 3650)
-	rep, err := BuildReport(s.store, r.URL.Query().Get("target"), time.Now().Add(-time.Duration(days)*24*time.Hour), 20000)
+	root := r.URL.Query().Get("target")
+	if root != "" {
+		names, err := s.targetNames()
+		if err != nil {
+			apiError(w, http.StatusInternalServerError, "could not build the report")
+			return
+		}
+		if validRoot(names, root) == "" {
+			apiError(w, http.StatusNotFound, errUnknownTarget.Error())
+			return
+		}
+	}
+	rep, err := BuildReport(s.store, root, time.Now().Add(-time.Duration(days)*24*time.Hour), 20000)
 	if err != nil {
 		apiError(w, http.StatusInternalServerError, "could not build the report")
 		return

@@ -85,10 +85,6 @@ func (s *Server) login2FA(w http.ResponseWriter, r *http.Request) {
 	restart := func(msg string) {
 		s.render(w, r, nil, "login", http.StatusUnauthorized, map[string]any{"Title": "Sign in", "PreCSRF": s.preCSRF(w, r), "Error": msg})
 	}
-	if s.throttled(ip) {
-		restart("Too many failed attempts. Try again in a few minutes.")
-		return
-	}
 	ticket := r.PostFormValue("ticket")
 	uid, ok := s.pending.try(ticket)
 	if !ok {
@@ -101,6 +97,12 @@ func (s *Server) login2FA(w http.ResponseWriter, r *http.Request) {
 		restart("Please sign in again.")
 		return
 	}
+	keys := signInKeys(ip, u.Username)
+	if s.throttled(keys) {
+		s.pending.done(ticket)
+		restart("Too many failed attempts. Try again in a few minutes.")
+		return
+	}
 	code := strings.TrimSpace(r.PostFormValue("code"))
 	good, how := false, ""
 	if step, okc := totpVerify(u.TOTPSecret, code, time.Now(), s.store.TOTPLast(u.ID)); okc && s.store.ClaimTOTPStep(u.ID, step) {
@@ -111,7 +113,7 @@ func (s *Server) login2FA(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if !good {
-		s.recordFail(ip)
+		s.recordFail(keys)
 		s.auditAs(u.Username, u.Kind, r, "login.fail", "", "wrong two-factor code")
 		s.render(w, r, nil, "login2fa", http.StatusUnauthorized, map[string]any{"Title": "Two-factor sign-in", "PreCSRF": s.preCSRF(w, r),
 			"Error": "That code was not accepted. Wait for the next code and try again.", "Ticket": ticket})
