@@ -7,11 +7,13 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -38,6 +40,7 @@ type program struct {
 	keeper   *certKeeper
 	web      *Server
 	stopOnce sync.Once
+	lock     *DataLock // held from start to stop: one agent per data folder
 }
 
 // Start opens the key and the encrypted database, starts the scheduler and the web server, and returns once they are running.
@@ -49,10 +52,18 @@ func (p *program) Start(service.Service) error {
 	p.log, p.closeLog = log, closeLog
 	fail := func(err error) error {
 		log.Error("startup failed", "err", err)
+		p.lock.Release()
 		closeLog()
 		return err
 	}
 
+	wait := time.Duration(0)
+	if p.boot.AfterUpdate {
+		wait = time.Minute // the version being replaced is still shutting down
+	}
+	if p.lock, err = LockDataDirWait(p.boot.DataDir, wait); err != nil {
+		return fail(err)
+	}
 	if err := ensureKeyFile(p.boot, log); err != nil {
 		return fail(err)
 	}
@@ -130,6 +141,9 @@ func (p *program) Start(service.Service) error {
 	go func() { defer close(p.engDone); eng.Run(ctx) }()
 	if service.Interactive() {
 		web.stop = p.stopInteractive
+		if runtime.GOOS == "windows" { // a new console window can ask for the passphrase again
+			web.restart = p.restartAfterUpdate
+		}
 		p.desktopStart(scheme + "://" + displayAddr(p.addr))
 	}
 	return nil
@@ -292,6 +306,7 @@ func (p *program) Stop(service.Service) error {
 		p.log.Warn("scheduler did not stop within 30s")
 	}
 	_ = p.store.Close()
+	p.lock.Release()
 	p.closeLog()
 	return nil
 }
@@ -301,6 +316,10 @@ func fatal(err error) {
 	os.Exit(1)
 }
 
+// stdinLines is shared by every prompt: a reader per prompt would buffer the
+// lines meant for the next one (e.g. "passphrase\nrepeat\n" piped in).
+var stdinLines = sync.OnceValue(func() *bufio.Reader { return bufio.NewReader(os.Stdin) })
+
 // readPassword reads a secret from the terminal without echo (or a line from a pipe).
 func readPassword(prompt string) (string, error) {
 	_, _ = fmt.Fprint(os.Stderr, prompt)
@@ -309,8 +328,18 @@ func readPassword(prompt string) (string, error) {
 		_, _ = fmt.Fprintln(os.Stderr)
 		return string(b), err
 	}
-	line, err := bufio.NewReader(os.Stdin).ReadString('\n')
-	return strings.TrimRight(line, "\r\n"), err
+	return readLine(stdinLines())
+}
+
+// readLine returns the next line without its line ending; a last line with no
+// newline still counts. Windows PowerShell 5.1 starts piped input with a UTF-8
+// byte-order mark, which would otherwise become part of the first passphrase.
+func readLine(r *bufio.Reader) (string, error) {
+	line, err := r.ReadString('\n')
+	if err == io.EOF && line != "" {
+		err = nil
+	}
+	return strings.TrimPrefix(strings.TrimRight(line, "\r\n"), "\ufeff"), err
 }
 
 // keyProtection adds (protect) or removes the passphrase on easm.key.
@@ -338,6 +367,11 @@ func keyProtection(boot *Bootstrap, protect bool) error {
 
 // resetPassword sets a new password for an existing user (offline recovery path).
 func resetPassword(boot *Bootstrap, username string) error {
+	lock, err := LockDataDir(boot.DataDir)
+	if err != nil {
+		return err
+	}
+	defer lock.Release()
 	vault, err := OpenVault(boot.KeyPath())
 	if err != nil {
 		return err
@@ -393,6 +427,11 @@ func main() {
 		force     = flag.Bool("force", false, "with -restore: replace an existing database (the old one is kept alongside)")
 		migrate   = flag.Bool("migrate-data", false, "move an installation that lives next to the program into the default data folder, then exit")
 		showVer   = flag.Bool("version", false, "print version and exit")
+		updCheck  = flag.Bool("update-check", false, "say whether a newer release exists, then exit")
+		updApply  = flag.Bool("update", false, "download, verify and install the newest release (stops and restarts the service if it runs as one), then exit")
+		rollback  = flag.Bool("rollback", false, "go back to the version the last update replaced (stop the agent first), then exit")
+		assumeYes = flag.Bool("yes", false, "with -update: do not ask for confirmation")
+		afterUpd  = flag.Bool("after-update", false, "internal: started by an update; wait for the previous version to let go of the data folder")
 	)
 	flag.Parse()
 	if *showVer {
@@ -424,6 +463,13 @@ func main() {
 	}
 	if *keepCon {
 		boot.KeepConsole = true
+	}
+	boot.AfterUpdate = *afterUpd
+	if *updCheck {
+		if err := updateCheckCommand(); err != nil {
+			fatal(err)
+		}
+		return
 	}
 	if *migrate {
 		if err := migrateCommand(); err != nil {
@@ -469,6 +515,12 @@ func main() {
 	if err != nil {
 		fatal(err)
 	}
+	if *updApply || *rollback {
+		if err := updateCommand(boot, svc, *rollback, *assumeYes); err != nil {
+			fatal(err)
+		}
+		return
+	}
 	switch *svcAction {
 	case "":
 		if err := svc.Run(); err != nil { // interactive (Ctrl-C) and under systemd / Windows service manager
@@ -512,6 +564,11 @@ func migrateCommand() error {
 
 // restoreCommand implements -restore.
 func restoreCommand(boot *Bootstrap, zipPath string, force bool) error {
+	lock, err := LockDataDir(boot.DataDir)
+	if err != nil {
+		return err
+	}
+	defer lock.Release()
 	done, err := RestoreBackup(zipPath, boot.DataDir, force, time.Now())
 	for _, d := range done {
 		fmt.Println(" -", d)

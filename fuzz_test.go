@@ -10,6 +10,9 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -217,6 +220,31 @@ func FuzzWebQueries(f *testing.F) {
 			_ = resp.Body.Close()
 			if resp.StatusCode >= 500 {
 				t.Fatalf("GET /%s?%s -> %d", p, v.Encode(), resp.StatusCode)
+			}
+		}
+	})
+}
+
+// FuzzUpdateMetadata: versions and signed checksum files come from the network.
+// Whatever arrives, parsing never panics, versions round-trip, and a checksum is
+// only ever returned for a file whose signature is valid.
+func FuzzUpdateMetadata(f *testing.F) {
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	good := []byte("# easm-agent 1.9.0\n" + strings.Repeat("a", 64) + "  easm-agent-windows-amd64.exe\n")
+	f.Add("v1.9.0", good, base64.StdEncoding.EncodeToString(ed25519.Sign(priv, good)))
+	f.Add("Windows", []byte("garbage"), "!!")
+	f.Add("1.2.3-rc.1", []byte("# easm-agent 1.2.3\n"), "")
+	f.Fuzz(func(t *testing.T, tag string, sums []byte, sig string) {
+		if v, ok := parseVersion(tag); ok {
+			if again, ok2 := parseVersion(v.String()); !ok2 || again != v {
+				t.Fatalf("%q -> %v does not round-trip", tag, v)
+			}
+		}
+		h, err := verifySums(pub, sums, []byte(sig), "1.9.0", "easm-agent-windows-amd64.exe")
+		if err == nil {
+			raw, derr := base64.StdEncoding.DecodeString(strings.TrimSpace(sig))
+			if derr != nil || !ed25519.Verify(pub, sums, raw) || len(h) != 64 {
+				t.Fatalf("checksum %q accepted without a valid signature", h)
 			}
 		}
 	})

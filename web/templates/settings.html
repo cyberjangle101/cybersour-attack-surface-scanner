@@ -8,6 +8,7 @@
     <h2>Organisation</h2>
     <div class="grid">
       <label class="wide">Organisation name <input name="org_name" value="{{.S.OrgName}}" maxlength="120" autocomplete="organization" placeholder="e.g. Acme Ltd"><span class="hint">Shown at the top of every report, with the domains it covers and who prepared it.</span></label>
+      <label class="check wide"><input type="checkbox" name="update_check" {{if .S.UpdateCheck}}checked{{end}}> Check for new versions once a day <span class="hint">Asks GitHub for the latest release and tells administrators on System health. Nothing is installed until an administrator chooses to.</span></label>
     </div>
   </section>
 

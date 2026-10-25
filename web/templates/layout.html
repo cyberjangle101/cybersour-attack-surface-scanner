@@ -36,6 +36,7 @@
 {{end}}
 <main class="wrap">
 {{with .Flash}}<div class="flash {{.Kind}}" role="status">{{.Text}}</div>{{end}}
+{{with .UpdateBanner}}<div class="flash info noprint" role="status">EASM Agent {{.}} is available. <a href="/health#updates">See what&rsquo;s new and install it</a></div>{{end}}
 {{template "content" .}}
 </main>
 <footer class="wrap foot">EASM Agent {{.Version}} · passive reconnaissance only. Monitor only domains you own or are authorised to assess.</footer>

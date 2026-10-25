@@ -41,6 +41,10 @@ type Settings struct {
 	// OrgName is the organisation the reports are prepared for, shown at the top of every report.
 	OrgName string
 
+	// UpdateCheck asks GitHub once a day whether a newer release exists (it only tells
+	// administrators; installing is always their decision).
+	UpdateCheck bool
+
 	// Reporting digest email
 	DigestFrequency string // off | daily | weekly
 	DigestHour      int    // 0-23, server local time
@@ -112,6 +116,8 @@ func DefaultSettings() Settings {
 		TargetTimeoutMinutes: 45,
 		EventRetentionDays:   90,
 		ConcurrentScans:      2,
+
+		UpdateCheck: true,
 
 		AlertMinEvents:         1,
 		AlertImmediateSeverity: "high",

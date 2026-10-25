@@ -3,9 +3,16 @@
 package main
 
 import (
+	"os/exec"
 	"syscall"
 	"unsafe"
 )
+
+// inNewConsole gives cmd a console window of its own, as a double-click would.
+func inNewConsole(cmd *exec.Cmd) {
+	const createNewConsole = 0x00000010
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: createNewConsole}
+}
 
 var (
 	kernel32                = syscall.NewLazyDLL("kernel32.dll")

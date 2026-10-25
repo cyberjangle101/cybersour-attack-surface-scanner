@@ -43,7 +43,9 @@ type Bootstrap struct {
 	// NoBrowser stops an interactive start from opening the web interface in the default browser.
 	NoBrowser bool `yaml:"no_browser"`
 	// KeepConsole keeps the console window visible on Windows after an interactive start.
-	KeepConsole bool       `yaml:"keep_console"`
+	KeepConsole bool `yaml:"keep_console"`
+	// AfterUpdate is set when an update restarted the agent: wait for the old process to exit.
+	AfterUpdate bool       `yaml:"-"`
 	Logging     LoggingCfg `yaml:"logging"`
 }
 
@@ -379,13 +381,14 @@ func parseASNList(s string) ([]int, error) {
 	var out []int
 	seen := map[int]bool{}
 	for _, p := range strings.FieldsFunc(s, func(r rune) bool { return r == ',' || r == ' ' || r == '\n' || r == '\r' || r == '\t' || r == ';' }) {
-		p = strings.TrimPrefix(strings.ToUpper(strings.TrimSpace(p)), "AS")
-		if p == "" {
+		typed := strings.TrimSpace(p)
+		p = strings.TrimPrefix(strings.ToUpper(typed), "AS")
+		if p == "" { // "AS 13335": the number is the next field
 			continue
 		}
 		n, err := strconv.Atoi(p)
 		if err != nil || n <= 0 || n > 4294967295 {
-			return nil, fmt.Errorf("%q is not a valid AS number", p)
+			return nil, fmt.Errorf("%q is not a valid AS number (use e.g. AS13335 or 13335)", typed) // quote what was typed
 		}
 		if !seen[n] {
 			seen[n] = true

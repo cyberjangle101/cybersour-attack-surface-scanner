@@ -57,7 +57,7 @@ Run these on the whole modified code base, not just the changed files.
 | 1 | Unit and integration tests | `go test -count=1 ./...` | all ok |
 | 2 | Race detector | `CGO_ENABLED=1 go test -race -count=1 ./...` (needs a C compiler; on Windows, WinLibs gcc on PATH) | no races |
 | 3 | Lint | `golangci-lint run ./...` | 0 issues |
-| 4 | Static scan (SAST) | `semgrep scan --error --metrics=off --config p/default --config p/golang --config p/secrets --config p/owasp-top-ten --exclude web/static .` (`--config auto` needs metrics on). Native Windows Semgrep fails on these rules: on Windows, rely on the Semgrep job in the Security Scan workflow (`gh workflow run security-scan.yml --ref <branch>`). | 0 findings. Fix them; do not suppress without a reason on that line. |
+| 4 | Static scan (SAST) | `semgrep scan --error --metrics=off --config p/default --config p/golang --config p/secrets --config p/owasp-top-ten --exclude web/static .` (`--config auto` needs metrics on). On Windows first set `TEMP` and `TMP` to a folder without an 8.3 short name (e.g. `C:\Users\<you>\code\semgrep-tmp`): semgrep-core's AF_UNIX socketpair fails ("Unix_error: Invalid argument socketpair") under `C:\Users\BIGBUN~1\...`. The CI job only gates lines a PR changes; a full local scan also lists older findings (backlog). | 0 new findings. Fix them; do not suppress without a reason on that line. |
 | 5 | Dependency scan (SCA) | `osv-scanner --lockfile=go.mod` (or OWASP Dependency-Check), plus `govulncheck ./...` | no known vulnerabilities |
 | 6 | Secrets scan | `trufflehog git file://. --only-verified --fail` (also `trufflehog filesystem .`) | 0 findings |
 | 7 | Fuzzing | `go test -run xxx -fuzz <FuzzTarget> -fuzztime 30s .` for every Fuzz target in packages you touched | no crashes |
@@ -93,13 +93,20 @@ Always test the feature that changed, plus anything it could break. Add a Go tes
 ## Releasing
 
 - Branch from an updated `main`: `feat/vX.Y.Z` or `fix/<name>`. Never commit to `main`.
-- One commit per PR if the branch already has an open PR: the repo rejects a second push while code scanning is running.
+- Force-pushes are blocked on every branch (never amend or rebase pushed commits). Fixes go in a new commit, pushed only after
+  code scanning for the previous push has finished: the repo rejects a push while it is still running.
 - Open the PR with the REST API: `gh api repos/cyberjangle101/cybersour-attack-surface-scanner/pulls -f title=... -f head=... -f base=main -F body=@file.md`
   (`gh pr create` fails here because GraphQL is blocked).
 - `main` needs the Security Scan workflow to pass and owner approval. Do not try to bypass it.
-- Release build: `CGO_ENABLED=0 go build -ldflags "-s -w -X main.version=X.Y.Z"` with the newest Go toolchain, then `govulncheck -mode=binary <binary>`.
-  Do not commit binaries or stray build output (`easm-agent`).
-- Update the README ("What's new") and the version for every release.
+- Pushes to a branch with no PR are refused by the code-scanning rule (except the push that creates it): push once, then open the PR.
+- Publishing is tag-driven: after the PR merges, tag `vX.Y.Z` on `main` and push the tag. `.github/workflows/release.yml` builds,
+  scans, signs `SHA256SUMS` with the `EASM_RELEASE_SIGNING_KEY` secret and publishes. See RELEASING.md. Never handle the private key.
+- Installed agents self-update from those releases (`update.go`): never weaken the signature, version-header or GitHub-host checks.
+  Plain HTTP and other hosts are only for `-X main.updateAPIBase=http://127.0.0.1:...` test builds.
+- Local release build (for testing): `CGO_ENABLED=0 go build -ldflags "-s -w -X main.version=X.Y.Z"` with the newest Go toolchain,
+  then `govulncheck -mode=binary` on an unstripped build. Do not commit binaries or stray build output (`easm-agent`).
+- Update the README ("What's new" and "Status") for every release: the release workflow refuses a tag the README does not mention.
+- One agent per data folder (`easm.lock`). Tests or tools that open a data folder while an agent runs must expect the lock.
 - Commit messages are imperative and say why. PR descriptions list what was verified and what could not be run.
 
 ## Reporting back

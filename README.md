@@ -2,7 +2,7 @@
 
 A lightweight, single-binary agent for continuous **External Attack Surface Management (EASM)**. It runs as a persistent background service on Windows or Linux, watches the internet-facing footprint of the organisations you tell it about, and emails you only when something **changes**.
 
-> **Status:** v1.8.0. See "What's new in 1.8" below.
+> **Status:** v1.9.0. See "What's new in 1.9" below.
 
 ## Why
 
@@ -50,6 +50,18 @@ are emailed only about new subdomains, new IP/DNS records, new certificates and 
 * **Alerts:** HTML + plaintext email (STARTTLS / implicit TLS), plus an optional daily/weekly digest that includes the same source/risk/fix text.
 * **Reports:** per-domain or all-domain report page, CSV exports (inventory, findings, assets) and JSON.
 * **Users:** admin, analyst and read-only viewer roles; local accounts with optional two-factor sign-in, or Active Directory sign-in (see *What's new in 1.6*).
+
+## What's new in 1.9
+
+**Updates itself, safely.** The agent checks GitHub once a day for a newer release (switch it off in *Settings → Organisation*) and tells administrators with a banner and on *System health → Updates*, with the release notes. *Back up and install* takes a backup, downloads the new version, and installs it only if it matches the release's `SHA256SUMS`, whose Ed25519 signature is checked against the key built into the program and which must name that exact version (so an old release cannot be passed off as new). The previous version is kept for `easm-agent -rollback`. On Windows, an agent started from its `.exe` restarts into the new version in a new window (enter the key passphrase there if it has one); services are updated with `easm-agent -update`, which stops and restarts the service around the swap. Releases are built and signed by CI from a version tag; see [RELEASING.md](RELEASING.md). Builds without a release key (such as your own) report new versions but never install them.
+
+**Fixes from QA.** Two agents could run on the same data folder at once, scanning and alerting twice and risking the database: the data folder is now locked, and a second start says which process holds it. Passphrases piped to `-protect-key` or `-reset-password` were rejected (one buffered reader per prompt, and the UTF-8 byte-order mark Windows PowerShell 5.1 puts in front of piped input): both are fixed.
+
+## Updating
+
+* **From the web interface:** *System health → Updates → Back up and install X.Y.Z* (administrators).
+* **From the command line** (servers, services): `easm-agent -update-check`, then `easm-agent -update` (add `-yes` to skip the question). Run it from an elevated prompt / as root when the agent is a service.
+* **Going back:** stop the agent, then `easm-agent -rollback`.
 
 ## What's new in 1.8
 
@@ -157,6 +169,9 @@ Also available: `stop`, `restart`, `uninstall`. Logs go to the console/service m
 | `-data-dir path` | Where `easm.db` and `easm.key` live (default: next to the program) |
 | `-config file` | Optional bootstrap YAML, see `config.example.yaml` |
 | `-reset-password user` | Offline password recovery, then exit |
+| `-update-check` | Say whether a newer release exists, then exit |
+| `-update` | Download, verify and install the newest release (stops/starts the service around it); `-yes` skips the question |
+| `-rollback` | Go back to the version the last update replaced (stop the agent first) |
 | `-no-browser` | Do not open the web interface in the browser at start-up |
 | `-keep-console` | Windows: keep the console window visible after start-up |
 | `-service action` | install / uninstall / start / stop / restart / status |

@@ -389,6 +389,9 @@ func settingsForm(s Settings) url.Values {
 	v.Set("digest_frequency", s.DigestFrequency)
 	v.Set("public_url", s.PublicURL)
 	v.Set("org_name", s.OrgName)
+	if s.UpdateCheck {
+		v.Set("update_check", "on")
+	}
 	v.Set("smtp_host", s.SMTPHost)
 	v.Set("smtp_security", s.SMTPSecurity)
 	v.Set("smtp_username", s.SMTPUsername)
