@@ -12,6 +12,13 @@ import (
 	"time"
 )
 
+func labListener(t *testing.T, banner string) string {
+	ip, port := listen(t, banner)
+	return net.JoinHostPort(ip, fmt.Sprint(port))
+}
+
+func labClosedPort(t *testing.T) string { return net.JoinHostPort("127.0.0.1", fmt.Sprint(closedPort(t))) }
+
 // TestLab starts the whole application against a made-up company ("acme-corp.test")
 // with realistic weaknesses, so a person or a browser script can try the web interface.
 // It only runs when EASM_LAB=1 and stops when the file /tmp/lab.stop appears.
@@ -52,6 +59,33 @@ func TestLab(t *testing.T) {
 	h.intel.idb["198.51.100.7"] = idbBody("198.51.100.7", []int{22, 3306, 9200}, []string{"CVE-2021-44228"}, []string{"database"})
 	h.intel.idb["203.0.113.30"] = idbBody("203.0.113.30", []int{443, 8443}, nil, nil)
 	h.intel.rdap["acme-corp.test"] = rdapBody(time.Now().Add(12 * 24 * time.Hour))
+
+	// slowco.test: a domain whose certificate search takes 90s, so pausing a scan or
+	// restarting it with active checks can be tried while it runs.
+	d.add(t, "slowco.test. 60 IN A 203.0.113.40")
+	d.addIP(t, "203.0.113.40", 64500, "203.0.113.0/24", "ACME-NET")
+	h.src.addCert("slowco.test", "www.slowco.test")
+	h.src.mu.Lock()
+	h.src.crtDelay = map[string]time.Duration{"slowco.test": 90 * time.Second}
+	h.src.mu.Unlock()
+
+	// "Confirm via active scan" reaches the lab's made-up internet hosts through local
+	// listeners: vpn's SMB port answers (no banner, like real SMB), its RDP port is
+	// closed, and dev's SSH port sends a banner. Nothing outside this machine is contacted.
+	smb, closed := labListener(t, ""), labClosedPort(t)
+	ssh := labListener(t, "SSH-2.0-OpenSSH_7.4 (lab)\r\n")
+	route := map[string]string{"203.0.113.20:445": smb, "203.0.113.20:3389": closed, "198.51.100.7:22": ssh}
+	oldDial := dialService
+	defer func() { dialService = oldDial }()
+	dialService = func(ctx context.Context, addr string) (net.Conn, error) {
+		if to, ok := route[addr]; ok {
+			addr = to
+		} else {
+			return nil, &net.OpError{Op: "dial", Net: "tcp", Err: timeoutErr{}}
+		}
+		var nd net.Dialer
+		return nd.DialContext(ctx, "tcp", addr)
+	}
 
 	ln, err := net.Listen("tcp", "127.0.0.1:18100")
 	if err != nil {

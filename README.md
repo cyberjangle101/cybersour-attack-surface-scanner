@@ -2,7 +2,7 @@
 
 A lightweight, single-binary agent for continuous **External Attack Surface Management (EASM)**. It runs as a persistent background service on Windows or Linux, watches the internet-facing footprint of the organisations you tell it about, and emails you only when something **changes**.
 
-> **Status:** v1.9.2. See "What's new in 1.9" below.
+> **Status:** v1.9.3. See "What's new in 1.9" below.
 
 ## Why
 
@@ -52,6 +52,12 @@ are emailed only about new subdomains, new IP/DNS records, new certificates and 
 * **Users:** admin, analyst and read-only viewer roles; local accounts with optional two-factor sign-in, or Active Directory sign-in (see *What's new in 1.6*).
 
 ## What's new in 1.9
+
+**v1.9.3:**
+* **Pause stops the scan.** Pausing a domain while it is being scanned now stops that scan straight away (nothing from the stopped scan is saved) instead of letting it run to the end. Scan history records it as "stopped: monitoring was paused".
+* **Active checks mid-scan.** *Scan now with active checks* while a passive scan is running stops it and starts again with active checks, instead of only warning that a scan was already running. The progress bar now shows **Active checks** when a scan runs them.
+* **Confirm via active scan.** Open-port (exposed-service) findings come from Shodan, InternetDB or Censys data that can be days old. Administrators can now press *Confirm via active scan* on such a finding: the agent connects to that one address and port (like `Test-NetConnection -Port` or `nc -v`) and reads the service's banner if it sends one. The result (*Verified open*, *port closed* or *no response*), the banner, when and by whom are shown on the finding and written to the audit log. Addresses outside the domain's expected ownership are only contacted if *Settings → Active checks* allows it.
+* Stopped scans are no longer counted as connector failures on *System health*.
 
 **v1.9.2:** the start-up window shows where the data folder, database and key file are. A wrong key-file passphrase now says "Incorrect Password, try again." and allows three attempts before aborting, and the window stays open for a few seconds so the reason can be read. Passphrases from `EASM_KEY_PASSPHRASE` still get one attempt.
 

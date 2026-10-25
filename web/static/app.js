@@ -34,6 +34,7 @@ document.addEventListener('submit', function (e) {
           if (!p) { finished = true; return; }
           el.querySelector('progress').value = p.percent;
           set(el, 'pct', p.percent + '%');
+          set(el, 'mode', p.active ? 'Active checks · ' : '');
           set(el, 'stage', p.stage);
           set(el, 'detail', p.detail ? ' \u00b7 ' + p.detail : '');
           set(el, 'stall', p.idle > 90 ? ' \u00b7 no progress for ' + p.idle + 's (a source is slow; it will time out and continue)' : '');

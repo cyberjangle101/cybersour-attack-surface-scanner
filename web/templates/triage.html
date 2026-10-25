@@ -1,4 +1,9 @@
 {{define "triage"}}{{with .F}}
+{{if eq .Kind "exposed-service"}}
+  {{if .VerifyState}}<div class="small"><span class="badge {{if eq .VerifyState "open"}}sev-high{{else}}muted{{end}}">{{verifyLabel .VerifyState}}</span> <span class="muted">{{ts .VerifyAt}} by {{.VerifyBy}}</span>{{if .VerifyBanner}}<div class="mono small">Banner: {{.VerifyBanner}}</div>{{end}}</div>
+  {{else}}<div class="small muted">Not verified by an active scan (from {{if .Source}}{{.Source}}{{else}}exposure data{{end}})</div>{{end}}
+  {{if $.Admin}}<form method="post" action="/findings/{{.ID}}/verify" class="inline" data-confirm="Connect to {{.Host}} on this port to confirm it is open? Only do this for systems you are allowed to test."><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="next" value="{{$.Next}}"><button class="btn small" type="submit" data-busy="Connecting…">Confirm via active scan</button></form>{{end}} {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
+{{end}}
 {{if eq .Status "ack"}}
   <div class="small muted">Accepted by {{.AckBy}}{{if .AckUntil}}, review {{.AckUntil}}{{end}}: {{.AckReason}}</div>
   <form method="post" action="/findings/{{.ID}}/reopen" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="next" value="{{$.Next}}"><button class="btn small" type="submit">Reopen</button></form> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}

@@ -13,6 +13,7 @@ type ScanProgress struct {
 	Stage    string // human-readable current stage
 	Detail   string // what exactly is being waited on
 	Percent  int    // 0-100, never decreases during a scan
+	Active   bool   // this scan runs the active checks
 	Started  time.Time
 	Updated  time.Time
 	Elapsed  int // seconds, filled in by Snapshot
@@ -54,6 +55,18 @@ func (b *ProgressBoard) Update(id int64, stage string, pct int, detail string) {
 			p.Percent = pct
 		}
 		p.Stage, p.Detail, p.Updated = stage, detail, time.Now()
+	}
+	b.mu.Unlock()
+}
+
+// MarkActive records that a scan runs the active checks.
+func (b *ProgressBoard) MarkActive(id int64) {
+	if b == nil {
+		return
+	}
+	b.mu.Lock()
+	if p := b.m[id]; p != nil {
+		p.Active = true
 	}
 	b.mu.Unlock()
 }

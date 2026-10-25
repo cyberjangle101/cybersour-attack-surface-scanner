@@ -243,6 +243,11 @@ var migrateStmts = []string{
 	`ALTER TABLE findings ADD COLUMN sev_override TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE findings ADD COLUMN sev_reason TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE findings ADD COLUMN sev_by TEXT NOT NULL DEFAULT ''`,
+	// "Confirm via active scan" result (exposed-service findings)
+	`ALTER TABLE findings ADD COLUMN verify_state TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE findings ADD COLUMN verify_banner TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE findings ADD COLUMN verify_at TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE findings ADD COLUMN verify_by TEXT NOT NULL DEFAULT ''`,
 	`UPDATE findings SET scan_sev=severity WHERE scan_sev=''`,
 	// accounts: sign-in kind (local|ad), two-factor, state
 	`ALTER TABLE events ADD COLUMN muted INTEGER NOT NULL DEFAULT 0`,
@@ -947,6 +952,8 @@ type Finding struct {
 	// Risk acceptance (status "ack") and analyst severity override.
 	AckReason, AckBy, AckAt, AckUntil      string
 	ScanSev, SevOverride, SevReason, SevBy string
+	// Last "Confirm via active scan" result.
+	VerifyState, VerifyBanner, VerifyAt, VerifyBy string
 }
 
 // ListFindings returns findings for a root ("" = all) filtered by status ("" = all), worst first.
@@ -961,7 +968,7 @@ func (s *Store) ListFindings(root, status string) ([]Finding, error) {
 		where = append(where, "status=?")
 		args = append(args, status)
 	}
-	rows, err := s.db.Query(`SELECT id,key,root,kind,severity,host,detail,status,first_seen,last_seen,source,ack_reason,ack_by,ack_at,ack_until,scan_sev,sev_override,sev_reason,sev_by FROM findings WHERE `+strings.Join(where, " AND "), args...) //nolint:gosec // G202: SQL text is built only from fixed fragments; every value is a bound parameter
+	rows, err := s.db.Query(`SELECT id,key,root,kind,severity,host,detail,status,first_seen,last_seen,source,ack_reason,ack_by,ack_at,ack_until,scan_sev,sev_override,sev_reason,sev_by,verify_state,verify_banner,verify_at,verify_by FROM findings WHERE `+strings.Join(where, " AND "), args...) //nolint:gosec // G202: SQL text is built only from fixed fragments; every value is a bound parameter
 	if err != nil {
 		return nil, err
 	}
@@ -970,7 +977,8 @@ func (s *Store) ListFindings(root, status string) ([]Finding, error) {
 	for rows.Next() {
 		var f Finding
 		if err := rows.Scan(&f.ID, &f.Key, &f.Root, &f.Kind, &f.Severity, &f.Host, &f.Detail, &f.Status, &f.FirstSeen, &f.LastSeen, &f.Source,
-			&f.AckReason, &f.AckBy, &f.AckAt, &f.AckUntil, &f.ScanSev, &f.SevOverride, &f.SevReason, &f.SevBy); err != nil {
+			&f.AckReason, &f.AckBy, &f.AckAt, &f.AckUntil, &f.ScanSev, &f.SevOverride, &f.SevReason, &f.SevBy,
+			&f.VerifyState, &f.VerifyBanner, &f.VerifyAt, &f.VerifyBy); err != nil {
 			return nil, err
 		}
 		out = append(out, f)
@@ -988,6 +996,13 @@ func (s *Store) ListFindings(root, status string) ([]Finding, error) {
 		return out[i].Host < out[j].Host
 	})
 	return out, nil
+}
+
+// SetFindingVerification records the result of a "Confirm via active scan".
+func (s *Store) SetFindingVerification(id int64, state, banner, by string) error {
+	_, err := s.db.Exec(`UPDATE findings SET verify_state=?, verify_banner=?, verify_at=?, verify_by=? WHERE id=?`,
+		state, truncate(banner, verifyBannerMax), nowUTC(), by, id)
+	return err
 }
 
 // SetFindingStatus acknowledges, reopens or resolves a finding.

@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"encoding/csv"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -74,6 +76,57 @@ func (s *Server) findingAccept(w http.ResponseWriter, r *http.Request, sess *Ses
 	}
 	s.audit(sess, r, "finding.accept", fmt.Sprintf("%s %s", f.Kind, f.Host), "reason: "+r.PostFormValue("reason")+"; review: "+r.PostFormValue("until"))
 	s.flash(sess, "good", "Risk accepted. The finding stays on record and will not alert"+untilNote(r.PostFormValue("until"))+".")
+	back(w, r)
+}
+
+// findingVerify connects to the address and port an exposed-service finding names
+// and records whether it really answers ("Confirm via active scan"). Administrators
+// only, like the other active checks, and audited.
+func (s *Server) findingVerify(w http.ResponseWriter, r *http.Request, sess *Session) {
+	f, ok := s.findingFromPath(w, r, sess)
+	if !ok {
+		return
+	}
+	ip, port, ok := serviceTarget(f)
+	if !ok {
+		s.flash(sess, "bad", "Only exposed-service findings (an open port) can be confirmed with an active scan.")
+		back(w, r)
+		return
+	}
+	st, err := s.store.LoadSettings()
+	if err != nil {
+		s.serverError(w, r, sess, err)
+		return
+	}
+	if strings.Contains(f.Detail, "outside the expected ownership") && !st.ActiveForeign {
+		s.flash(sess, "warn", ip+" is on a network outside this domain's expected ownership, so it was not contacted. "+
+			"Allow it under Settings → Active checks (\"also probe addresses outside the expected ownership\") if you are permitted to test it.")
+		back(w, r)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+	res := checkService(ctx, ip, port)
+	if err := s.store.SetFindingVerification(f.ID, res.State, res.Banner, sess.Username); err != nil {
+		s.serverError(w, r, sess, err)
+		return
+	}
+	addr := net.JoinHostPort(ip, strconv.Itoa(port))
+	s.audit(sess, r, "finding.verify", addr, res.State+ifStr(res.Banner != "", "; banner: "+res.Banner))
+	switch res.State {
+	case verifyOpen:
+		msg := fmt.Sprintf("Confirmed: %s accepted a connection (%d ms).", addr, res.LatencyMs)
+		if res.Banner != "" {
+			msg += " The service announced: " + res.Banner
+		} else {
+			msg += " It sent no banner (normal for HTTP, SMB, RDP and other services that wait for the client)."
+		}
+		s.flash(sess, "good", msg)
+	case verifyClosed:
+		s.flash(sess, "warn", addr+" refused the connection: the port is closed now. The exposure data may be out of date; the finding resolves on a later scan if the sources agree.")
+	default:
+		s.flash(sess, "warn", addr+" did not answer ("+res.Error+"). A firewall may block this machine, or the service is gone.")
+	}
 	back(w, r)
 }
 
