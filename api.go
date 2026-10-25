@@ -52,6 +52,10 @@ type apiFinding struct {
 	SeverityNote  string `json:"severity_reason,omitempty"`
 	SeverityBy    string `json:"severity_by,omitempty"`
 	SeverityIsSet bool   `json:"severity_overridden"`
+
+	Trust        string `json:"trust,omitempty"`         // trusted | unconfirmed | disputed; empty for first-hand findings
+	TrustSources string `json:"trust_sources,omitempty"` // the independent sources that agree
+	ConfirmedBy  string `json:"confirmed_by,omitempty"`  // analyst who confirmed it by hand
 }
 
 func apiFindings(in []Finding) []apiFinding {
@@ -60,7 +64,7 @@ func apiFindings(in []Finding) []apiFinding {
 		i := describeFinding(f)
 		a := apiFinding{ID: f.ID, Severity: f.Severity, Type: f.Kind, Title: i.Title, Target: f.Root, Host: f.Host, Detail: f.Detail,
 			Source: i.Source, Risk: i.Risk, Solution: i.Solution, Status: f.Status, FirstSeen: f.FirstSeen, LastSeen: f.LastSeen, Key: f.Key,
-			SeverityIsSet: f.SevOverride != ""}
+			SeverityIsSet: f.SevOverride != "", Trust: f.Trust, TrustSources: f.TrustSources, ConfirmedBy: f.ConfirmBy}
 		if f.SevOverride != "" {
 			a.ScanSeverity, a.SeverityNote, a.SeverityBy = f.ScanSev, f.SevReason, f.SevBy
 		}

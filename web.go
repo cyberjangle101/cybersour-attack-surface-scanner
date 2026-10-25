@@ -114,6 +114,8 @@ func NewServer(store *Store, eng *Engine, log *slog.Logger, boot *Bootstrap) (*S
 			return map[string]any{"F": f, "CSRF": csrf, "Next": next, "Admin": admin}
 		},
 		"verifyLabel": verifyLabel,
+		"trustLabel":  trustLabel,
+		"thirdParty":  func(kind string) bool { return thirdPartyKinds[kind] },
 		"add":    func(a, b int) int { return a + b },
 		"sub":    func(a, b int) int { return a - b },
 		"join":   strings.Join,
@@ -249,6 +251,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /findings/{id}/reopen", s.auth(permTriage, s.findingReopen))
 	mux.HandleFunc("POST /findings/{id}/severity", s.auth(permTriage, s.findingSeverity))
 	mux.HandleFunc("POST /findings/{id}/verify", s.auth(permAdmin, s.findingVerify))
+	mux.HandleFunc("POST /findings/{id}/confirm", s.auth(permTriage, s.findingConfirm))
 	mux.HandleFunc("GET /findings/{id}/evidence", s.auth(permView, s.findingEvidence))
 	mux.HandleFunc("GET /findings/{id}/evidence.json", s.auth(permView, s.findingEvidenceJSON))
 	mux.HandleFunc("GET /events", s.auth(permView, s.events))
@@ -1208,6 +1211,18 @@ func (s *Server) findings(w http.ResponseWriter, r *http.Request, sess *Session)
 	} else {
 		sev = ""
 	}
+	trust := q.Get("trust")
+	if trust == "trusted" || trust == "unconfirmed" {
+		var f []Finding
+		for _, x := range list {
+			if (x.Trust == trustUnconfirmed || x.Trust == trustDisputed) == (trust == "unconfirmed") {
+				f = append(f, x)
+			}
+		}
+		list = f
+	} else {
+		trust = ""
+	}
 	grouped := q.Get("group") == "host"
 	perHost := map[string]int{}
 	for _, f := range list {
@@ -1232,7 +1247,7 @@ func (s *Server) findings(w http.ResponseWriter, r *http.Request, sess *Session)
 		})
 	}
 	s.render(w, r, sess, "findings", http.StatusOK, map[string]any{
-		"Title": "Findings", "Nav": "findings", "Findings": list, "Targets": names, "Target": root, "Status": status, "Severity": sev,
+		"Title": "Findings", "Nav": "findings", "Findings": list, "Targets": names, "Target": root, "Status": status, "Severity": sev, "Trust": trust,
 		"Next": r.URL.RequestURI(), "Grouped": grouped, "PerHost": perHost,
 	})
 }

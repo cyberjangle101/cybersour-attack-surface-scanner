@@ -41,13 +41,10 @@ func useOwnConsole() {
 
 var (
 	kernel32                = syscall.NewLazyDLL("kernel32.dll")
-	user32                  = syscall.NewLazyDLL("user32.dll")
 	procGetConsoleWindow    = kernel32.NewProc("GetConsoleWindow")
 	procGetConsoleProcesses = kernel32.NewProc("GetConsoleProcessList")
-	procShowWindow          = user32.NewProc("ShowWindow")
+	procFreeConsole         = kernel32.NewProc("FreeConsole")
 )
-
-const swHide = 0
 
 // ownsConsole reports whether this process is alone on its console window, which
 // is the case when the program was started by double-clicking it. When it was
@@ -65,15 +62,22 @@ func ownsConsole() bool {
 	return n == 1
 }
 
-// hideConsole hides this process's console window; the agent keeps running.
-func hideConsole() bool {
-	if procShowWindow.Find() != nil {
+// leaveConsole detaches this process from its console window; the agent keeps
+// running. Hiding the window (ShowWindow) is not enough: on Windows 11 the
+// console usually lives in a Windows Terminal tab, which ignores it. Detaching
+// works for both: a console with no program left in it closes, tab or window.
+// Call it only when ownsConsole is true, or it would leave the user's shell.
+func leaveConsole() bool {
+	if procFreeConsole.Find() != nil {
 		return false
 	}
-	hwnd, _, _ := procGetConsoleWindow.Call()
-	if hwnd == 0 {
+	r, _, _ := procFreeConsole.Call()
+	if r == 0 {
 		return false
 	}
-	_, _, _ = procShowWindow.Call(hwnd, swHide)
+	// The standard handles now point at nothing; send any stray output nowhere.
+	if null, err := os.OpenFile(os.DevNull, os.O_RDWR, 0); err == nil {
+		os.Stdin, os.Stdout, os.Stderr = null, null, null
+	}
 	return true
 }

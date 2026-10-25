@@ -14,6 +14,7 @@
   <p class="prose">{{.F.Detail}}</p>
   <dl class="facts">
     <dt>Source of evidence</dt><dd>{{if .F.Source}}{{.F.Source}}{{else}}the agent's own DNS and certificate checks{{end}}</dd>
+    {{if .F.Trust}}<dt>Corroboration</dt><dd>{{template "trustbadge" .F}}{{if .F.ConfirmBy}}<div class="small">Confirmed by {{.F.ConfirmBy}} on {{ts .F.ConfirmAt}}: {{.F.ConfirmNote}}</div>{{end}}<div class="small muted">A finding from exposure data is trusted once two independent sources report it: Shodan (InternetDB and the Shodan API count as one), Censys, the agent's own active check, or an analyst's confirmation.</div></dd>{{end}}
     <dt>First seen</dt><dd>{{ts .F.FirstSeen}}</dd>
     <dt>Last confirmed by a scan</dt><dd>{{ts .F.LastSeen}}</dd>
     {{if eq .F.Kind "exposed-service"}}<dt>Active scan</dt><dd>{{if .F.VerifyState}}<span class="badge {{if eq .F.VerifyState "open"}}sev-high{{else}}muted{{end}}">{{verifyLabel .F.VerifyState}}</span> {{ts .F.VerifyAt}} by {{.F.VerifyBy}}{{if .F.VerifyBanner}}<div class="mono small">Banner: {{.F.VerifyBanner}}</div>{{end}}{{else}}Not verified yet{{if $.IsAdmin}}: use <em>Confirm via active scan</em> on the <a href="/findings">Findings</a> page{{end}}.{{end}}</dd>{{end}}

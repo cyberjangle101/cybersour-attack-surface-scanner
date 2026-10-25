@@ -1,10 +1,19 @@
-{{define "triage"}}{{with .F}}
+{{define "trustbadge"}}{{if .Trust}}<div class="small"><span class="badge {{if eq .Trust "trusted"}}good{{else if eq .Trust "disputed"}}muted{{else}}warn{{end}}">{{trustLabel .Trust}}</span>
+  <span class="muted">{{if eq .Trust "trusted"}}{{.TrustSources}} agree{{else}}only {{if .TrustSources}}{{.TrustSources}}{{else}}one source{{end}}{{if eq .Trust "disputed"}}, and the agent's own check got no connection{{end}}: not alerted or counted until a second source agrees{{end}}</span></div>{{end}}{{end}}{{define "triage"}}{{with .F}}
 {{if eq .Kind "exposed-service"}}
   {{if .VerifyState}}<div class="small"><span class="badge {{if eq .VerifyState "open"}}sev-high{{else}}muted{{end}}">{{verifyLabel .VerifyState}}</span> <span class="muted">{{ts .VerifyAt}} by {{.VerifyBy}}</span>{{if .VerifyBanner}}<div class="mono small">Banner: {{.VerifyBanner}}</div>{{end}}</div>
   {{else}}<div class="small muted">Not verified by an active scan (from {{if .Source}}{{.Source}}{{else}}exposure data{{end}})</div>{{end}}
   {{if $.Admin}}<form method="post" action="/findings/{{.ID}}/verify" class="inline" data-confirm="Connect to {{.Host}} on this port to confirm it is open? Only do this for systems you are allowed to test."><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="next" value="{{$.Next}}"><button class="btn small" type="submit" data-busy="Connecting…">Confirm via active scan</button></form>{{end}} {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
 {{end}}
-{{if eq .Status "ack"}}
+{{if thirdParty .Kind}}
+  {{if .ConfirmBy}}<div class="small muted">Confirmed by {{.ConfirmBy}}: {{.ConfirmNote}}</div>
+  <form method="post" action="/findings/{{.ID}}/confirm" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="next" value="{{$.Next}}"><input type="hidden" name="action" value="remove"><button class="btn small" type="submit">Remove confirmation</button></form> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
+  {{else if ne .Trust "trusted"}}<details class="triage"><summary class="btn small">Mark as confirmed</summary>
+    <form method="post" action="/findings/{{.ID}}/confirm" class="stack"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="next" value="{{$.Next}}"> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
+      <label>How did you confirm it? <input name="note" required minlength="10" maxlength="500" placeholder="e.g. checked the installed version on the server"></label>
+      <button class="btn small" type="submit">Confirm</button></form>
+  </details>{{end}}
+{{end}}{{if eq .Status "ack"}}
   <div class="small muted">Accepted by {{.AckBy}}{{if .AckUntil}}, review {{.AckUntil}}{{end}}: {{.AckReason}}</div>
   <form method="post" action="/findings/{{.ID}}/reopen" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="next" value="{{$.Next}}"><button class="btn small" type="submit">Reopen</button></form> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
 {{else}}

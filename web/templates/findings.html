@@ -11,6 +11,9 @@
     <option value="high" {{if eq .Severity "high"}}selected{{end}}>High</option>
     <option value="medium" {{if eq .Severity "medium"}}selected{{end}}>Medium and up</option>
     <option value="low" {{if eq .Severity "low"}}selected{{end}}>Low and up</option></select></label>
+  <label>Corroboration <select name="trust"><option value="">Any</option>
+    <option value="trusted" {{if eq .Trust "trusted"}}selected{{end}}>Trusted or first-hand</option>
+    <option value="unconfirmed" {{if eq .Trust "unconfirmed"}}selected{{end}}>Unconfirmed or disputed</option></select></label>
   <label class="check"><input type="checkbox" name="group" value="host" {{if .Grouped}}checked{{end}}> Group by host</label>
   <button class="btn" type="submit">Apply</button>
 </form>
@@ -20,7 +23,7 @@
     <thead><tr><th>Severity</th><th>Finding</th><th>Source of evidence</th><th>Risk</th><th>Recommended fix</th><th>First seen</th><th>Status</th><th></th></tr></thead>
     <tbody>{{$prev := ""}}{{range .Findings}}{{if and $.Grouped (ne .Host $prev)}}<tr class="group"><th colspan="8" class="mono">{{.Host}} <span class="muted small">{{index $.PerHost .Host}} finding(s)</span></th></tr>{{end}}{{$prev = .Host}}<tr class="{{if ne .Status "open"}}dim{{end}}">
       {{$i := finfo .}}<td><span class="badge {{sevClass .Severity}}">{{upper .Severity}}</span></td>
-      <td class="prose"><strong>{{$i.Title}}</strong><div class="mono">{{.Host}}</div><div class="small muted">{{.Root}}</div><div class="small">{{.Detail}}</div></td>
+      <td class="prose"><strong>{{$i.Title}}</strong>{{template "trustbadge" .}}<div class="mono">{{.Host}}</div><div class="small muted">{{.Root}}</div><div class="small">{{.Detail}}</div></td>
       <td class="prose small">{{$i.Source}}<div><a class="evlink" href="/findings/{{.ID}}/evidence">View evidence ›</a></div></td><td class="prose small">{{$i.Risk}}</td><td class="prose small">{{$i.Solution}}</td><td>{{ts .FirstSeen}}</td><td>{{.Status}}</td>
       <td class="actions">{{if $.CanTriage}}{{template "triage" (tctx . $.CSRF $.Next $.IsAdmin)}}{{end}}</td>
     </tr>{{end}}</tbody>

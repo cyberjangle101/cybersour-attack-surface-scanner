@@ -354,8 +354,12 @@ func (e *Engine) scan(ctx context.Context, t *Target) {
 	}
 	e.finish(t, sc, startedAt, status, msg, wait)
 	e.saveHealth()
-	if status == "ok" && e.store.TakeVerifyOnce(t.Domain) {
-		e.confirmOpenPorts(ctx, t, settings.ActiveForeign)
+	if status == "ok" {
+		if e.store.TakeVerifyOnce(t.Domain) {
+			e.confirmOpenPorts(ctx, t, settings.ActiveForeign, confirmFirstScan)
+		} else if sc.cfg.Active.Enabled {
+			e.confirmOpenPorts(ctx, t, settings.ActiveForeign, confirmAuto) // corroborate one-source ports before alerting
+		}
 	}
 	if status != "interrupted" {
 		e.alertMu.Lock()

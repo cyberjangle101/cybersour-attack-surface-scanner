@@ -117,20 +117,36 @@ func serviceTarget(f *Finding) (ip string, port int, ok bool) {
 // maxAutoConfirm caps how many ports one "Confirm open ports" run connects to.
 const maxAutoConfirm = 100
 
-// confirmOpenPorts runs checkService on every open exposed-service finding of a
-// domain (the "Confirm open ports" box when adding it). Addresses outside the
-// expected ownership are skipped unless foreign is allowed, as for a manual check.
-func (e *Engine) confirmOpenPorts(ctx context.Context, t *Target, foreign bool) {
+// recheckAfter is how long an automatic check's result stands before an
+// unconfirmed finding is checked again.
+const recheckAfter = 7 * 24 * time.Hour
+
+// Why confirmOpenPorts runs.
+const (
+	confirmFirstScan = "first scan"     // the "Confirm open ports" box when the domain was added: every open port
+	confirmAuto      = "corroboration"  // after a scan with active checks on: unconfirmed ports only
+)
+
+// confirmOpenPorts runs checkService on open exposed-service findings of a
+// domain. On the first scan (the "Confirm open ports" box) it checks them all;
+// after later scans with active checks on, only those no second source has
+// confirmed, so a port reported by Shodan alone is tested before it is trusted.
+// Addresses outside the expected ownership are skipped unless foreign is allowed,
+// as for a manual check.
+func (e *Engine) confirmOpenPorts(ctx context.Context, t *Target, foreign bool, why string) {
 	fs, err := e.store.ListFindings(t.Domain, "open")
 	if err != nil {
 		e.log.Warn("confirm open ports: cannot list findings", "domain", t.Domain, "err", err)
 		return
 	}
-	done, skipped := 0, 0
+	done, skipped, nowTrusted := 0, 0, 0
 	for i := range fs {
 		f := &fs[i]
 		ip, port, ok := serviceTarget(f)
 		if !ok {
+			continue
+		}
+		if why == confirmAuto && (f.Trust == trustTrusted || recentlyChecked(f.VerifyAt)) {
 			continue
 		}
 		if ctx.Err() != nil || done >= maxAutoConfirm {
@@ -143,18 +159,32 @@ func (e *Engine) confirmOpenPorts(ctx context.Context, t *Target, foreign bool) 
 		cctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 		res := checkService(cctx, ip, port)
 		cancel()
-		if err := e.store.SetFindingVerification(f.ID, res.State, res.Banner, "first scan"); err != nil {
+		level, err := e.store.RecordVerification(f, res.State, res.Banner, why)
+		if err != nil {
 			e.log.Warn("confirm open ports: cannot store result", "err", err)
 			continue
+		}
+		if level == trustTrusted {
+			nowTrusted++
 		}
 		detail := res.State
 		if res.Banner != "" {
 			detail += "; banner: " + res.Banner
 		}
-		_ = e.store.Audit("system", "system", "finding.verify", net.JoinHostPort(ip, strconv.Itoa(port)), detail+" (Confirm open ports, first scan of "+t.Domain+")", "")
+		how := " (Confirm open ports, first scan of " + t.Domain + ")"
+		if why == confirmAuto {
+			how = " (automatic check of an unconfirmed port after a scan of " + t.Domain + ")"
+		}
+		_ = e.store.Audit("system", "system", "finding.verify", net.JoinHostPort(ip, strconv.Itoa(port)), detail+how, "")
 		done++
 	}
-	e.log.Info("open ports confirmed", "domain", t.Domain, "checked", done, "skipped_outside_ownership", skipped)
+	e.log.Info("open ports checked", "domain", t.Domain, "why", why, "checked", done, "trusted", nowTrusted, "skipped_outside_ownership", skipped)
+}
+
+// recentlyChecked reports whether an active check ran within recheckAfter.
+func recentlyChecked(at string) bool {
+	t, err := time.Parse(time.RFC3339, at)
+	return err == nil && time.Since(t) < recheckAfter
 }
 
 // verifyLabel words a stored check result for the findings table.

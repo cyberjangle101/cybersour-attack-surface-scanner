@@ -107,7 +107,8 @@ func (s *Server) findingVerify(w http.ResponseWriter, r *http.Request, sess *Ses
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 	res := checkService(ctx, ip, port)
-	if err := s.store.SetFindingVerification(f.ID, res.State, res.Banner, sess.Username); err != nil {
+	level, err := s.store.RecordVerification(f, res.State, res.Banner, sess.Username)
+	if err != nil {
 		s.serverError(w, r, sess, err)
 		return
 	}
@@ -116,6 +117,9 @@ func (s *Server) findingVerify(w http.ResponseWriter, r *http.Request, sess *Ses
 	switch res.State {
 	case verifyOpen:
 		msg := fmt.Sprintf("Confirmed: %s accepted a connection (%d ms).", addr, res.LatencyMs)
+		if level == trustTrusted {
+			msg += " With the exposure data, two independent sources now agree, so the finding is trusted."
+		}
 		if res.Banner != "" {
 			msg += " The service announced: " + res.Banner
 		} else {
@@ -127,6 +131,47 @@ func (s *Server) findingVerify(w http.ResponseWriter, r *http.Request, sess *Ses
 	default:
 		s.flash(sess, "warn", addr+" did not answer ("+res.Error+"). A firewall may block this machine, or the service is gone.")
 	}
+	back(w, r)
+}
+
+// findingConfirm records an analyst's confirmation of a finding that came from
+// exposure data alone (for example a CVE checked against the installed version),
+// which makes them the second, independent source; or removes it. Audited.
+func (s *Server) findingConfirm(w http.ResponseWriter, r *http.Request, sess *Session) {
+	f, ok := s.findingFromPath(w, r, sess)
+	if !ok {
+		return
+	}
+	if !thirdPartyKinds[f.Kind] {
+		s.flash(sess, "bad", "Only findings from exposure data need a second source.")
+		back(w, r)
+		return
+	}
+	what := fmt.Sprintf("%s %s", f.Kind, f.Host)
+	if r.PostFormValue("action") == "remove" {
+		level, err := s.store.SetFindingConfirmation(f, "", "")
+		if err != nil {
+			s.serverError(w, r, sess, err)
+			return
+		}
+		s.audit(sess, r, "finding.unconfirm", what, "confirmation removed")
+		s.flash(sess, "good", "Confirmation removed. The finding is now "+strings.ToLower(trustLabel(level))+".")
+		back(w, r)
+		return
+	}
+	note := strings.TrimSpace(r.PostFormValue("note"))
+	if len(note) < 10 {
+		s.flash(sess, "bad", "Say how you confirmed it (at least 10 characters), for example the version you found installed.")
+		back(w, r)
+		return
+	}
+	level, err := s.store.SetFindingConfirmation(f, sess.Username, note)
+	if err != nil {
+		s.serverError(w, r, sess, err)
+		return
+	}
+	s.audit(sess, r, "finding.confirm", what, "how: "+note)
+	s.flash(sess, "good", "Confirmation recorded. The finding is now "+strings.ToLower(trustLabel(level))+".")
 	back(w, r)
 }
 

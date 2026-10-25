@@ -19,7 +19,7 @@
 <div class="stats">
   <a class="stat" href="/targets"><div class="n">{{.Stats.Targets}}</div><div class="l">Monitored domains</div></a>
   <a class="stat" href="/assets"><div class="n">{{.Stats.Hosts}}</div><div class="l">Hosts tracked</div></a>
-  <a class="stat {{if .Stats.HighFindings}}bad{{else if .Stats.OpenFindings}}warn{{end}}" href="/findings"><div class="n">{{.Stats.OpenFindings}}</div><div class="l">Open findings{{if .Stats.HighFindings}} ({{.Stats.HighFindings}} high){{end}}</div></a>
+  <a class="stat {{if .Stats.HighFindings}}bad{{else if .Stats.OpenFindings}}warn{{end}}" href="/findings"><div class="n">{{.Stats.OpenFindings}}</div><div class="l">Open findings{{if .Stats.HighFindings}} ({{.Stats.HighFindings}} high){{end}}</div>{{if .Stats.UnconfirmedFindings}}<div class="l small">+ {{.Stats.UnconfirmedFindings}} unconfirmed</div>{{end}}</a>
   <a class="stat" href="/events"><div class="n">{{.Stats.Events24h}}</div><div class="l">Changes in 24h</div></a>
 </div>
 
