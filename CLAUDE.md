@@ -59,7 +59,7 @@ Run these on the whole modified code base, not just the changed files.
 | 3 | Lint | `golangci-lint run ./...` | 0 issues |
 | 4 | Static scan (SAST) | `semgrep scan --error --metrics=off --config p/default --config p/golang --config p/secrets --config p/owasp-top-ten --exclude web/static .` (`--config auto` needs metrics on). On Windows first set `TEMP` and `TMP` to a folder without an 8.3 short name (e.g. `C:\Users\<you>\code\semgrep-tmp`): semgrep-core's AF_UNIX socketpair fails ("Unix_error: Invalid argument socketpair") under `C:\Users\BIGBUN~1\...`. The CI job only gates lines a PR changes; a full local scan also lists older findings (backlog). | 0 new findings. Fix them; do not suppress without a reason on that line. |
 | 5 | Dependency scan (SCA) | `osv-scanner --lockfile=go.mod` (or OWASP Dependency-Check), plus `govulncheck ./...` | no known vulnerabilities |
-| 6 | Secrets scan | `trufflehog git file://. --only-verified --fail` (also `trufflehog filesystem .`) | 0 findings |
+| 6 | Secrets scan | `gitleaks git --config .gitleaks.toml --redact --exit-code 1 .` (what CI's Security Scan runs, over the whole history, after committing), then `trufflehog git file://. --only-verified --fail` (also `trufflehog filesystem .`) | 0 findings. A made-up key in a test must be added to the allowlist in `.gitleaks.toml` as an exact value, in the same PR |
 | 7 | Fuzzing | `go test -run xxx -fuzz <FuzzTarget> -fuzztime 30s .` for every Fuzz target in packages you touched | no crashes |
 | 8 | Dynamic scan (DAST) | start the agent on a throwaway data dir, then `zap-baseline.py -t https://127.0.0.1:8080 -I` (or ZAP Docker) | no new medium/high alerts |
 | 9 | User acceptance (UAT) | see below | every step works |
