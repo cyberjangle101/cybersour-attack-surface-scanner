@@ -51,7 +51,7 @@ func (s *Server) healthRows2(labels map[string]string) ([]healthGroup, map[strin
 	}
 	have := map[string]bool{
 		secretShodan: s.eng.HasSecret(secretShodan), secretCensys: s.eng.HasSecret(secretCensys), secretVT: s.eng.HasSecret(secretVT),
-		secretHIBP: s.eng.HasSecret(secretHIBP), secretGitHub: s.eng.HasSecret(secretGitHub),
+		secretHIBP: s.eng.HasSecret(secretHIBP), secretGitHub: s.eng.HasSecret(secretGitHub), secretOTX: s.eng.HasSecret(secretOTX),
 	}
 	var conns []Connector
 	for _, c := range Connectors(st, have) {

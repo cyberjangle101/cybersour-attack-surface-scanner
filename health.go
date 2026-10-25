@@ -292,8 +292,8 @@ func Connectors(s Settings, have map[string]bool) []Connector {
 	c := []Connector{
 		{ID: "crtsh", Group: "Subdomain discovery", Label: "crt.sh", What: "Certificate Transparency search", Enabled: s.CrtShEnabled, Probe: "Connectivity only (queries are heavy, so a real search is not used)"},
 		{ID: "hackertarget", Group: "Subdomain discovery", Label: "HackerTarget", What: "Host search (free tier ≈50 queries/day)", Enabled: s.HackerTargetEnabled, Probe: "Connectivity only (preserves the free daily quota)"},
-		{ID: "otx", Group: "Subdomain discovery", Label: "AlienVault OTX", What: "Passive DNS", Enabled: s.OTXEnabled, Probe: "Connectivity only"},
-		{ID: "anubis", Group: "Subdomain discovery", Label: "Anubis (jldc.me)", What: "Subdomain dataset", Enabled: s.AnubisEnabled, Probe: "Connectivity only"},
+		{ID: "otx", Group: "Subdomain discovery", Label: "AlienVault OTX", What: "Passive DNS (free key)", Enabled: s.OTXEnabled, NeedsKey: true, HasKey: have[secretOTX], Probe: "Connectivity only"},
+		{ID: "anubis", Group: "Subdomain discovery", Label: "Anubis (jonlu.ca)", What: "Subdomain dataset (blocks automated clients)", Enabled: s.AnubisEnabled, Probe: "Connectivity only"},
 		{ID: "shodan-dns", Group: "Subdomain discovery", Label: "Shodan DNS", What: "Subdomains from Shodan (uses 1 query credit per scan)", Enabled: s.ShodanEnabled && s.ShodanDomainLookup, NeedsKey: true, HasKey: have[secretShodan], Probe: "Not probed (would use a query credit); status comes from real scans"},
 		{ID: "virustotal", Group: "Subdomain discovery", Label: "VirusTotal", What: "Subdomains (free key: 4 requests/min)", Enabled: s.VirusTotalEnabled, NeedsKey: true, HasKey: have[secretVT], Probe: "One API request"},
 		{ID: "hibp", Group: "Exposure of people and code", Label: "Have I Been Pwned", What: "Leaked accounts for your domain (paid key, verified domain)", Enabled: s.HIBPEnabled, NeedsKey: true, HasKey: have[secretHIBP], Probe: "Checks the key with a subscription-status call"},

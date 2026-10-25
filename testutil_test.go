@@ -500,6 +500,7 @@ func newHarness(t testing.TB) *harness {
 	st.DNSResolvers = []string{h.dns.addr}
 	st.DNSQPS, st.DNSTimeoutSeconds, st.DNSRetries, st.DNSWorkers = 2000, 1, 1, 8
 	st.ASNBGPViewFallback = false
+	st.AnubisEnabled = true // off by default (the live service blocks bots); the fake one feeds most scan tests
 	st.DigestFrequency = "off"
 	st.CrtShMaxAttempts = 2
 	st.SMTPEnabled, st.SMTPHost, st.SMTPPort, st.SMTPSecurity = true, "127.0.0.1", h.smtp.port(), "none"

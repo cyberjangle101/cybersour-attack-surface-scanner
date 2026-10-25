@@ -14,4 +14,6 @@ regexes = [
   '''^ATTACKER-KEY-123456$''',                         # web_test.go
   '''^(hibp-key|gh-token)-123456$''',                  # discover_test.go
   '''^SHODANKEY-1234567890$''',                        # evidence_test.go (v1.9.4)
+  '''^otx-key-abcdef123456$''',                        # web_test.go
+  '''^OTX-KEY-0123456789$''',                          # intel_test.go
 ]

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -62,7 +63,7 @@ func NewDiscoverer(cfg *Config, log *slog.Logger) *Discoverer {
 		crtsh:        "https://crt.sh/",
 		hackertarget: "https://api.hackertarget.com/hostsearch/",
 		otx:          "https://otx.alienvault.com/api/v1/indicators/domain/",
-		anubis:       "https://jldc.me/anubis/subdomains/",
+		anubis:       "https://jonlu.ca/anubis/subdomains/", // jldc.me now 301-redirects here
 	}}
 }
 
@@ -103,8 +104,15 @@ func retry(ctx context.Context, log *slog.Logger, name string, attempts int, bas
 	return err
 }
 
+// reqOpts adds per-source request headers, and a check that turns a refusal (a bot-challenge
+// page, a "please authenticate" body) into a clear error that is not retried.
+type reqOpts struct {
+	header  map[string]string
+	refused func(status int, body []byte) error
+}
+
 // getWithRetry GETs u and passes the body to handle, retrying transient failures (timeouts, 429, 5xx, truncated bodies) with exponential backoff and jitter.
-func (d *Discoverer) getWithRetry(ctx context.Context, name, u string, attempts int, base, ceiling, timeout time.Duration, handle func(io.Reader) error) error {
+func (d *Discoverer) getWithRetry(ctx context.Context, name, u string, opts *reqOpts, attempts int, base, ceiling, timeout time.Duration, handle func(io.Reader) error) error {
 	return retry(ctx, d.log, name, attempts, base, ceiling, func(ctx context.Context) (bool, error) {
 		cctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
@@ -114,11 +122,22 @@ func (d *Discoverer) getWithRetry(ctx context.Context, name, u string, attempts 
 		}
 		req.Header.Set("User-Agent", d.cfg.Sources.UserAgent)
 		req.Header.Set("Accept", "application/json, text/plain, */*")
+		if opts != nil {
+			for k, v := range opts.header {
+				req.Header.Set(k, v)
+			}
+		}
 		resp, err := d.hc.Do(req)
 		if err != nil {
 			return ctx.Err() == nil, err // timeouts / resets are retryable
 		}
 		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode != http.StatusOK && opts != nil && opts.refused != nil {
+			body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+			if err := opts.refused(resp.StatusCode, body); err != nil {
+				return false, err
+			}
+		}
 		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
 			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
 			return true, fmt.Errorf("HTTP %d", resp.StatusCode)
@@ -266,7 +285,7 @@ func (d *Discoverer) fetchCrtSh(ctx context.Context, root string) ([]string, []C
 	u := d.urls.crtsh + "?q=" + url.QueryEscape("%."+root) + "&output=json"
 	var hosts []string
 	var certs []CertInfo
-	err := d.getWithRetry(ctx, "crtsh", u, cfg.MaxAttempts, cfg.BaseBackoff, cfg.MaxBackoff, cfg.Timeout, func(r io.Reader) (err error) {
+	err := d.getWithRetry(ctx, "crtsh", u, nil, cfg.MaxAttempts, cfg.BaseBackoff, cfg.MaxBackoff, cfg.Timeout, func(r io.Reader) (err error) {
 		// Reset per attempt: a failed attempt may have produced a partial list.
 		hosts, certs, err = parseCrtSh(r, root)
 		return err
@@ -349,14 +368,14 @@ func dedupe(in []string) []string {
 // ---- HackerTarget (free tier: ~50 queries/day/IP — fine for a handful of roots) ----
 
 func (d *Discoverer) fetchHackerTarget(ctx context.Context, root string) ([]string, error) {
-	return d.fetchHosts(ctx, "hackertarget", d.urls.hackertarget+"?q="+url.QueryEscape(root), parseHackerTarget)
+	return d.fetchHosts(ctx, "hackertarget", d.urls.hackertarget+"?q="+url.QueryEscape(root), nil, parseHackerTarget)
 }
 
 // fetchHosts runs the common "GET, parse into host names, retry on transient failure" flow
 // shared by the simple free sources.
-func (d *Discoverer) fetchHosts(ctx context.Context, name, u string, parse func(io.Reader) ([]string, error)) ([]string, error) {
+func (d *Discoverer) fetchHosts(ctx context.Context, name, u string, opts *reqOpts, parse func(io.Reader) ([]string, error)) ([]string, error) {
 	var hosts []string
-	err := d.getWithRetry(ctx, name, u, 3, 5*time.Second, time.Minute, 60*time.Second, func(r io.Reader) (err error) {
+	err := d.getWithRetry(ctx, name, u, opts, 3, 5*time.Second, time.Minute, 60*time.Second, func(r io.Reader) (err error) {
 		hosts, err = parse(r)
 		return err
 	})
@@ -384,10 +403,23 @@ func parseHackerTarget(r io.Reader) ([]string, error) {
 	return hosts, sc.Err()
 }
 
-// ---- AlienVault OTX passive DNS (unauthenticated) ----
+// ---- AlienVault OTX passive DNS (free API key) ----
 
 func (d *Discoverer) fetchOTX(ctx context.Context, root string) ([]string, error) {
-	return d.fetchHosts(ctx, "otx", d.urls.otx+url.PathEscape(root)+"/passive_dns", parseOTX)
+	opts := &reqOpts{header: map[string]string{"X-OTX-API-KEY": d.cfg.Sources.OTX.Key}, refused: otxRefused}
+	return d.fetchHosts(ctx, "otx", d.urls.otx+url.PathEscape(root)+"/passive_dns", opts, parseOTX)
+}
+
+// otxRefused spots OTX turning a caller away for lack of a valid key. Anonymous callers get
+// a 429 on the very first request, so retrying (or calling it rate limiting) is pointless.
+func otxRefused(status int, body []byte) error {
+	if status != http.StatusTooManyRequests && status != http.StatusUnauthorized && status != http.StatusForbidden {
+		return nil
+	}
+	if !bytes.Contains(bytes.ToLower(body), []byte("authenticat")) {
+		return nil
+	}
+	return fmt.Errorf("OTX turned the request away (HTTP status %d): it needs a valid free OTX API key, saved in Settings", status)
 }
 
 // parseOTX extracts host names from an AlienVault OTX passive-DNS response.
@@ -407,10 +439,22 @@ func parseOTX(r io.Reader) ([]string, error) {
 	return hosts, nil
 }
 
-// ---- Anubis (jldc.me) free subdomain dataset ----
+// ---- Anubis (jonlu.ca, formerly jldc.me) free subdomain dataset ----
 
 func (d *Discoverer) fetchAnubis(ctx context.Context, root string) ([]string, error) {
-	return d.fetchHosts(ctx, "anubis", d.urls.anubis+url.PathEscape(root), parseAnubis)
+	return d.fetchHosts(ctx, "anubis", d.urls.anubis+url.PathEscape(root), &reqOpts{refused: anubisRefused}, parseAnubis)
+}
+
+// anubisRefused spots the Cloudflare bot-challenge page jonlu.ca serves to every non-browser
+// client. Solving it is not an option, so the error says the source is unusable instead.
+func anubisRefused(status int, body []byte) error {
+	if status != http.StatusForbidden && status != http.StatusServiceUnavailable {
+		return nil
+	}
+	if !bytes.Contains(body, []byte("Cloudflare")) && !bytes.Contains(body, []byte("cf-chl")) {
+		return nil
+	}
+	return errors.New("anubis (jonlu.ca) answers automated clients with a Cloudflare bot challenge, so it cannot be used: untick it in Settings")
 }
 
 func parseAnubis(r io.Reader) ([]string, error) {

@@ -216,7 +216,7 @@ type DiscoverCfg struct {
 }
 
 // Secrets holds decrypted credentials for one scan.
-type Secrets struct{ SMTP, Shodan, Censys, VirusTotal, HIBP, GitHub string }
+type Secrets struct{ SMTP, Shodan, Censys, VirusTotal, HIBP, GitHub, OTX string }
 
 const (
 	secretSMTP   = "secret:smtp_password"
@@ -225,6 +225,7 @@ const (
 	secretVT     = "secret:virustotal_key"
 	secretHIBP   = "secret:hibp_key"     //nolint:gosec // G101: the NAME of a stored secret, not a credential
 	secretGitHub = "secret:github_token" //nolint:gosec // G101: the NAME of a stored secret, not a credential
+	secretOTX    = "secret:otx_key"
 )
 
 // CrtShCfg configures the crt.sh certificate-transparency source, including its retry/backoff behaviour.
@@ -240,8 +241,11 @@ type CrtShCfg struct {
 type SourcesCfg struct {
 	CrtSh        CrtShCfg
 	HackerTarget Toggle
-	OTX          Toggle
-	Anubis       Toggle
+	OTX          struct { // passive DNS now refuses anonymous callers, so it needs a (free) key
+		Enabled bool
+		Key     string
+	}
+	Anubis    Toggle
 	UserAgent    string
 }
 

@@ -59,7 +59,7 @@ func (e *Engine) RunHealthChecks(ctx context.Context) {
 		on       bool
 	}{
 		{"crtsh", "crt.sh", st.CrtShEnabled}, {"hackertarget", "api.hackertarget.com", st.HackerTargetEnabled},
-		{"otx", "otx.alienvault.com", st.OTXEnabled}, {"anubis", "jldc.me", st.AnubisEnabled},
+		{"otx", "otx.alienvault.com", st.OTXEnabled}, {"anubis", "jonlu.ca", st.AnubisEnabled},
 	}
 	for _, s := range sources {
 		if s.on {

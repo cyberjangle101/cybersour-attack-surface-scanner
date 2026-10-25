@@ -1535,7 +1535,7 @@ func (s *Server) settingsView(w http.ResponseWriter, r *http.Request, sess *Sess
 	}
 	s.render(w, r, sess, "settings", http.StatusOK, map[string]any{
 		"Title": "Settings", "Nav": "settings", "S": st, "HasPassword": s.eng.HasSMTPPassword(),
-		"HasShodan": s.eng.HasSecret(secretShodan), "HasCensys": s.eng.HasSecret(secretCensys), "HasVT": s.eng.HasSecret(secretVT), "HasHIBP": s.eng.HasSecret(secretHIBP), "HasGitHub": s.eng.HasSecret(secretGitHub),
+		"HasShodan": s.eng.HasSecret(secretShodan), "HasCensys": s.eng.HasSecret(secretCensys), "HasVT": s.eng.HasSecret(secretVT), "HasHIBP": s.eng.HasSecret(secretHIBP), "HasGitHub": s.eng.HasSecret(secretGitHub), "HasOTX": s.eng.HasSecret(secretOTX),
 		"Resolvers": strings.Join(st.DNSResolvers, "\n"), "Recipients": strings.Join(st.SMTPTo, "\n"),
 		"Listen": s.listenView(), "Cert": s.certView(), "Backup": s.backupView(),
 	})
@@ -1613,6 +1613,7 @@ func (s *Server) settingsSave(w http.ResponseWriter, r *http.Request, sess *Sess
 		{secretVT, "virustotal_key", "VirusTotal", next.VirusTotalEnabled},
 		{secretHIBP, "hibp_key", "Have I Been Pwned", next.HIBPEnabled},
 		{secretGitHub, "github_token", "GitHub", next.GitHubEnabled},
+		{secretOTX, "otx_key", "AlienVault OTX", next.OTXEnabled},
 	} {
 		val, wipe := strings.TrimSpace(r.PostFormValue(k.field)), r.PostFormValue(k.field+"_clear") == "on"
 		if val != "" && !apiKeyRe.MatchString(val) {

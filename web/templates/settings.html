@@ -101,8 +101,10 @@
     <div class="grid">
       <label class="check"><input type="checkbox" name="crtsh_enabled" {{if .S.CrtShEnabled}}checked{{end}}> crt.sh (Certificate Transparency)</label>
       <label class="check"><input type="checkbox" name="hackertarget_enabled" {{if .S.HackerTargetEnabled}}checked{{end}}> HackerTarget host search <span class="hint">Free tier: roughly 50 queries per day.</span></label>
-      <label class="check"><input type="checkbox" name="otx_enabled" {{if .S.OTXEnabled}}checked{{end}}> AlienVault OTX passive DNS</label>
-      <label class="check"><input type="checkbox" name="anubis_enabled" {{if .S.AnubisEnabled}}checked{{end}}> Anubis subdomain dataset</label>
+      <label class="check"><input type="checkbox" name="otx_enabled" {{if .S.OTXEnabled}}checked{{end}}> AlienVault OTX passive DNS <span class="hint">Needs a free OTX API key (otx.alienvault.com, Settings → API Integration): OTX turns anonymous callers away.</span></label>
+      <label>OTX API key <input type="password" name="otx_key" autocomplete="new-password" placeholder="{{if .HasOTX}}(saved; leave blank to keep){{else}}(not set){{end}}"></label>
+      <label class="check"><input type="checkbox" name="otx_key_clear"> Remove the saved OTX key</label>
+      <label class="check"><input type="checkbox" name="anubis_enabled" {{if .S.AnubisEnabled}}checked{{end}}> Anubis subdomain dataset <span class="hint">Currently unusable: jonlu.ca answers automated clients with a Cloudflare bot challenge.</span></label>
       <label>crt.sh timeout per attempt (seconds) <input name="crtsh_timeout_seconds" inputmode="numeric" value="{{.S.CrtShTimeoutSeconds}}"></label>
       <label>crt.sh attempts (with exponential backoff) <input name="crtsh_max_attempts" inputmode="numeric" value="{{.S.CrtShMaxAttempts}}"></label>
     </div>
