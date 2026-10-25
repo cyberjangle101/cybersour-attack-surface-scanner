@@ -141,6 +141,9 @@ func (p *program) Start(service.Service) error {
 			"Remove plain_http, set tls_cert/tls_key, or put the agent behind a TLS reverse proxy (and set secure_cookies: true)")
 	}
 	log.Info("agent started", "version", version, "data_dir", p.boot.DataDir, "url", scheme+"://"+displayAddr(p.addr))
+	if f := web.SetupCodeFile(); f != "" { // the code itself is never logged
+		log.Warn("no administrator yet: open the web interface and create one with the setup code from this file", "file", f)
+	}
 
 	go func() { defer close(p.engDone); eng.Run(ctx) }()
 	if service.Interactive() {
@@ -160,8 +163,14 @@ func (p *program) Start(service.Service) error {
 // the icon, from System health → Stop agent, or run it as a service.
 func (p *program) desktopStart(link string) {
 	fmt.Printf("\nEASM Agent %s is running at %s\n", version, link)
+	page := link
+	if code := p.web.SetupCode(); code != "" {
+		// The page the browser opens fills the code in from the address fragment, which is never sent to the server.
+		fmt.Printf("\nFirst start: create the administrator account on the page that opens.\nSetup code: %s  (also in %s)\n", code, p.web.SetupCodeFile())
+		page = link + "/setup#code=" + code
+	}
 	if !p.boot.NoBrowser {
-		if err := openBrowser(link); err != nil {
+		if err := openBrowser(page); err != nil {
 			fmt.Printf("Open %s in your browser.\n", link)
 			p.log.Info("browser not opened", "reason", err)
 		}
@@ -463,6 +472,7 @@ func main() {
 		listen    = flag.String("listen", "", "address for the web interface (default 127.0.0.1:8080)")
 		dataDir   = flag.String("data-dir", "", "where to keep the database, key and log (default: %LocalAppData%\\EASM Agent on Windows, ~/.local/share/easm-agent or /var/lib/easm-agent on Linux)")
 		svcAction = flag.String("service", "", "service control: install|uninstall|start|stop|restart|status")
+		svcAcct   = flag.String("service-account", "", `with -service install on Windows: the account the service runs as. Default NT SERVICE\easm-agent (a low-privilege account Windows manages, no password); or a group managed service account (DOMAIN\name$), or LocalSystem`)
 		protectK  = flag.Bool("protect-key", false, "protect easm.key with a passphrase (asked for at start-up or read from EASM_KEY_PASSPHRASE), then exit")
 		unprotect = flag.Bool("unprotect-key", false, "remove the passphrase protection from easm.key, then exit")
 		resetPW   = flag.String("reset-password", "", "set a new password for the named user, then exit")
@@ -531,6 +541,13 @@ func main() {
 		}
 		return
 	}
+	installing := *svcAction == "install"
+	if installing && boot.DataDir == "" {
+		// A service keeps its data in a machine-wide folder, not in the profile of the administrator who installed it.
+		if exe, err := os.Executable(); err == nil && !hasLegacyData(filepath.Dir(exe)) {
+			boot.DataDir = serviceDataDir()
+		}
+	}
 	if err := boot.Finalize(); err != nil {
 		fatal(err)
 	}
@@ -554,20 +571,39 @@ func main() {
 		return
 	}
 
-	args := []string{"-data-dir", boot.DataDir, "-listen", boot.Listen}
-	if *cfgPath != "" {
-		if abs, err := filepath.Abs(*cfgPath); err == nil {
-			args = append(args, "-config", abs)
-		}
-	}
+	args := serviceArgs(boot, *cfgPath, *plainHTTP, *noPass)
 	prg := &program{boot: boot}
-	svc, err := service.New(prg, &service.Config{
+	cfg := &service.Config{
 		Name: "easm-agent", DisplayName: "EASM Agent",
 		Description: "Continuous external attack surface monitoring with a web interface",
 		Arguments:   args,
-	})
+	}
+	account := ""
+	if installing && runtime.GOOS == "windows" {
+		account = serviceAccountFor(*svcAcct)
+		exe, err := installProgram()
+		if err != nil {
+			fatal(err)
+		}
+		cfg.Executable, cfg.UserName = exe, account
+		cfg.Option = service.KeyValue{"DelayedAutoStart": true, "OnFailure": "restart", "OnFailureDelayDuration": "1m", "OnFailureResetPeriod": 86400}
+	}
+	svc, err := service.New(prg, cfg)
 	if err != nil {
 		fatal(err)
+	}
+	if *svcAction == "" && *dataDir == "" && *listen == "" && service.Interactive() {
+		if addr := installedServiceAddress(); addr != "" {
+			if st, err := svc.Status(); err == nil && st == service.StatusRunning {
+				// Double-clicked on a computer where the agent already runs as a service: open that one instead of starting a second, empty agent.
+				fmt.Printf("EASM Agent already runs as a service on this computer. Opening %s\n", addr)
+				_ = openBrowser(addr)
+				if ownsConsole() {
+					time.Sleep(fatalPause)
+				}
+				return
+			}
+		}
 	}
 	if *updApply || *rollback {
 		if err := updateCommand(boot, svc, *rollback, *assumeYes); err != nil {
@@ -592,8 +628,66 @@ func main() {
 			fatal(fmt.Errorf("service %s: %w", *svcAction, err))
 		}
 		fmt.Println("service", *svcAction, "OK")
-		if *svcAction == "install" {
-			fmt.Printf("Start it with:  %s -service start\nThen open %s://%s in a browser.\n", os.Args[0], map[bool]string{true: "https", false: "http"}[boot.UsesTLS()], displayAddr(boot.Listen))
+		if installing {
+			printServiceInstalled(boot, cfg.Executable, account)
+		}
+	}
+}
+
+// serviceArgs is the command line the service manager starts the agent with. Options
+// given with -service install must apply to every start, not only to the install.
+func serviceArgs(boot *Bootstrap, cfgPath string, plainHTTP, noPass bool) []string {
+	args := []string{"-data-dir", boot.DataDir, "-listen", boot.Listen}
+	if plainHTTP {
+		args = append(args, "-plain-http")
+	}
+	if noPass {
+		args = append(args, "-no-passphrase")
+	}
+	if cfgPath != "" {
+		if abs, err := filepath.Abs(cfgPath); err == nil {
+			args = append(args, "-config", abs)
+		}
+	}
+	return args
+}
+
+// printServiceInstalled locks the data folder to the service account and tells the
+// administrator what was set up and what to do next.
+func printServiceInstalled(boot *Bootstrap, exe, account string) {
+	if exe == "" {
+		exe = os.Args[0]
+	}
+	if runtime.GOOS == "windows" {
+		who := account
+		if who == "" {
+			who = "LocalSystem"
+		}
+		if err := grantServiceData(boot.DataDir, account); err != nil {
+			fmt.Printf("WARNING: could not give %s access to %s: %v\n", who, boot.DataDir, err)
+		}
+		fmt.Printf("\nThe service runs %s\nas %s", exe, who)
+		if account == defaultServiceAccount {
+			fmt.Print(" (a low-privilege account Windows manages; it has no password)")
+		}
+		fmt.Printf(".\nData folder: %s (only that account, SYSTEM and Administrators can open it).\n", boot.DataDir)
+		fmt.Print("On its first start the encryption key is created and protected with that account: nothing to type.\n" +
+			"Then download a recovery copy of the key from System health -> Encryption key and keep it offline.\n")
+		if old, _, err := platformDataDirNow(); err == nil && !sameDir(old, boot.DataDir) && fileExists(filepath.Join(old, "easm.db")) && !fileExists(filepath.Join(boot.DataDir, "easm.db")) {
+			fmt.Printf("\nAn existing installation was found in %s. To keep its data, stop that copy and copy\n"+
+				"easm.db and easm.key into %s before starting the service. If its key has a passphrase,\n"+
+				"start the service once with EASM_KEY_PASSPHRASE set, use System health -> Encryption key ->\n"+
+				"Protect with the Windows account, then remove the variable.\n", old, boot.DataDir)
+		}
+	}
+	scheme := map[bool]string{true: "https", false: "http"}[boot.UsesTLS()]
+	fmt.Printf("\nStart it with:  %s -service start\nThen open %s://%s and create the administrator with the setup code from\n%s\n",
+		filepath.Base(exe), scheme, displayAddr(boot.Listen), filepath.Join(boot.DataDir, setupCodeFile))
+	if host, _, err := net.SplitHostPort(boot.Listen); err == nil {
+		if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+			fmt.Print("\nIt only accepts connections from this computer. For other people to use it, install with\n" +
+				"-listen 0.0.0.0:8443 (or this server's address), add the name they will type to allowed_hosts in the\n" +
+				"config file, and upload your organisation's certificate in System health.\n")
 		}
 	}
 }

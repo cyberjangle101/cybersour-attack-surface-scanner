@@ -98,6 +98,7 @@ func TestLab(t *testing.T) {
 	defer cancel()
 	go h.eng.Run(ctx)
 	_ = os.Remove("/tmp/lab.stop")
+	_ = os.WriteFile("/tmp/lab.setup-code", []byte(e.web.SetupCode()), 0o600) // nosemgrep: go.lang.security.bad_tmp.bad-tmp-file-creation -- the opt-in lab (EASM_LAB=1) hands its throwaway setup code to the UAT scripts, like its other /tmp control files
 	_ = os.WriteFile("/tmp/lab.ready", []byte("ready"), 0o600)
 	for i := 0; i < 2400; i++ { // up to 40 minutes
 		var b strings.Builder

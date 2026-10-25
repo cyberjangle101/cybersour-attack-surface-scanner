@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 
 	"golang.org/x/crypto/scrypt"
 	"golang.org/x/term"
@@ -23,10 +24,27 @@ import (
 type Vault struct {
 	aead   cipher.AEAD
 	master []byte // 256-bit master key; the database key is derived from it (see tde.go)
+
+	pmu  sync.Mutex
+	mode string // how easm.key is stored: keyPassphrase, keyWindows or keyPlain
 }
 
 // wrappedMagic starts a passphrase-protected key file.
 const wrappedMagic = "easm-key-v2-scrypt\n"
+
+// dpapiMagic starts a key file protected with the Windows account (DPAPI, keyprotect_windows.go).
+const dpapiMagic = "easm-key-v3-dpapi\n"
+
+// How the key file is protected.
+const (
+	keyPassphrase = "passphrase" // scrypt + AES-GCM: asked for (or EASM_KEY_PASSPHRASE) at every start
+	keyWindows    = "windows"    // DPAPI: only the Windows account that wrote it, on this computer, can open it
+	keyPlain      = "none"       // 64 hex characters: anyone who can read the file can use it
+)
+
+// errDPAPIKey explains a Windows-protected key file that this account cannot open.
+var errDPAPIKey = errors.New("easm.key is protected with the Windows account that created it, and only that account on this computer can open it. " +
+	"Run the agent as that account (for a service: the service's account), or restore the key from the recovery copy made in System health → Encryption key")
 
 // PassphraseSource supplies the key-file passphrase when the key file is protected.
 // The default reads EASM_KEY_PASSPHRASE and falls back to a terminal prompt.
@@ -82,11 +100,18 @@ func unlockKey(raw []byte) ([]byte, error) {
 func OpenVault(path string) (*Vault, error) {
 	raw, err := os.ReadFile(path) //nolint:gosec // G304: the agent's own key file
 	var key []byte
+	mode := keyPlain
 	switch {
 	case err == nil && strings.HasPrefix(string(raw), wrappedMagic):
 		if key, err = unlockKey(raw); err != nil {
 			return nil, err
 		}
+		mode = keyPassphrase
+	case err == nil && strings.HasPrefix(string(raw), dpapiMagic):
+		if key, err = unwrapWindows(raw); err != nil {
+			return nil, err
+		}
+		mode = keyWindows
 	case err == nil:
 		k, derr := hex.DecodeString(strings.TrimSpace(string(raw)))
 		if derr != nil || len(k) != 32 {
@@ -112,7 +137,62 @@ func OpenVault(path string) (*Vault, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Vault{aead: g, master: key}, nil
+	return &Vault{aead: g, master: key, mode: mode}, nil
+}
+
+// wrapWindows writes the master key as a key file only this Windows account can open.
+func wrapWindows(key []byte) ([]byte, error) {
+	blob, err := dpapiProtect(key)
+	if err != nil {
+		return nil, err
+	}
+	return []byte(dpapiMagic + base64.StdEncoding.EncodeToString(blob) + "\n"), nil
+}
+
+// unwrapWindows opens a key file written by wrapWindows.
+func unwrapWindows(file []byte) ([]byte, error) {
+	blob, err := base64.StdEncoding.DecodeString(strings.TrimSpace(strings.TrimPrefix(string(file), dpapiMagic)))
+	if err != nil {
+		return nil, errors.New("the Windows-protected key file is corrupt")
+	}
+	key, err := dpapiUnprotect(blob)
+	if err != nil || len(key) != 32 {
+		return nil, fmt.Errorf("%w (%v)", errDPAPIKey, err)
+	}
+	return key, nil
+}
+
+// Protection says how the key file is stored (keyPassphrase, keyWindows or keyPlain).
+func (v *Vault) Protection() string {
+	v.pmu.Lock()
+	defer v.pmu.Unlock()
+	return v.mode
+}
+
+// ProtectWithWindows rewrites the key file at path so that only the Windows account
+// this agent runs as can open it, with nothing to type at start-up.
+func (v *Vault) ProtectWithWindows(path string) error {
+	out, err := wrapWindows(v.master)
+	if err != nil {
+		return err
+	}
+	if err := writeFileAtomic(path, out); err != nil {
+		return err
+	}
+	v.pmu.Lock()
+	v.mode = keyWindows
+	v.pmu.Unlock()
+	return nil
+}
+
+// RecoveryCopy returns the master key locked with pass, in the passphrase key-file
+// format: saved as easm.key it opens with that passphrase on any computer. It is the
+// way to move or rebuild an installation whose key is tied to a Windows account.
+func (v *Vault) RecoveryCopy(pass string) ([]byte, error) {
+	if len(pass) < minPassphrase {
+		return nil, fmt.Errorf("the recovery passphrase must be at least %d characters", minPassphrase)
+	}
+	return wrapKey(v.master, pass)
 }
 
 // wrapKey encrypts the master key under a passphrase (scrypt N=2^15, AES-256-GCM).

@@ -56,3 +56,17 @@ document.addEventListener('change', function (e) {
   rd.onload = function () { box.value = String(rd.result); };
   rd.readAsText(inp.files[0]);
 });
+
+// First-administrator setup: the agent opens /setup#code=... on the computer it was
+// started on. The fragment never reaches the server or its logs; it is copied into the
+// field and removed from the address bar (and so from the history entry).
+(function () {
+  const fill = function () {
+    const box = document.getElementById('setup-code');
+    const m = /^#code=([A-Za-z0-9-]{1,40})$/.exec(window.location.hash);
+    if (!box || !m) { return; }
+    box.value = m[1];
+    if (window.history && window.history.replaceState) { window.history.replaceState(null, '', window.location.pathname); }
+  };
+  if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', fill); } else { fill(); }
+})();

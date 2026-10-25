@@ -167,8 +167,10 @@ func parseCymruOrigin(s string) (asn int, prefix, cc string, err error) {
 	if err != nil {
 		return 0, "", "", fmt.Errorf("bad ASN in cymru origin record: %w", err)
 	}
-	// Use an explicit constant bound check so conversion to int is safe on 32-bit and 64-bit platforms.
-	if n > 2147483647 {
+	// Every 32-bit ASN fits in int on the 64-bit platforms the agent is built for. Only a
+	// 32-bit build could overflow, and only there are the largest ASNs (4-byte private use,
+	// 4200000000 and up) refused, so the conversion below is always safe.
+	if strconv.IntSize == 32 && n > math.MaxInt32 {
 		return 0, "", "", fmt.Errorf("ASN out of range for int: %d", n)
 	}
 	return int(n), strings.TrimSpace(parts[1]), strings.TrimSpace(parts[2]), nil

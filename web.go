@@ -75,6 +75,7 @@ type Server struct {
 
 	mu       sync.Mutex
 	setupMu  sync.Mutex
+	setup    setupGate // the one-time code that guards first-administrator setup (setup_code.go)
 	sessions map[string]*Session
 	fails    map[string]*failRec
 	secure   bool
@@ -156,6 +157,9 @@ func NewServer(store *Store, eng *Engine, log *slog.Logger, boot *Bootstrap) (*S
 			return nil, fmt.Errorf("template %s: %w", p, err)
 		}
 		s.tpl[p] = t
+	}
+	if _, err := s.prepareSetupCode(); err != nil {
+		return nil, err
 	}
 	return s, nil
 }
@@ -260,6 +264,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /health", s.auth(permView, s.healthView))
 	mux.HandleFunc("POST /health/check", s.auth(permTriage, s.healthCheck))
 	mux.HandleFunc("POST /system/stop", s.auth(permAdmin, s.stopAgent))
+	mux.HandleFunc("POST /system/key/recovery", s.auth(permAdmin, s.keyRecovery))
+	mux.HandleFunc("POST /system/key/windows", s.auth(permAdmin, s.keyWindows))
 	mux.HandleFunc("POST /system/update/check", s.auth(permAdmin, s.updateCheck))
 	mux.HandleFunc("POST /system/update/install", s.auth(permAdmin, s.updateInstall))
 
@@ -609,6 +615,11 @@ func (s *Server) setupSubmit(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
+	if !s.setupCodeOK(r.PostFormValue("code")) {
+		s.log.Warn("first-administrator setup refused: wrong setup code", "remote", r.RemoteAddr)
+		fail("That setup code is not right. It is in " + setupCodeFile + " in the agent's data folder, and it changes every time the agent starts.")
+		return
+	}
 	name, pw := strings.TrimSpace(r.PostFormValue("username")), r.PostFormValue("password")
 	if !userRe.MatchString(name) {
 		fail("Username must be 3-32 characters: letters, digits, dot, dash or underscore.")
@@ -632,6 +643,7 @@ func (s *Server) setupSubmit(w http.ResponseWriter, r *http.Request) {
 		fail(err.Error())
 		return
 	}
+	s.finishSetup()
 	s.log.Info("first administrator created", "user", name)
 	u, _ := s.store.GetUser(id)
 	sess := s.newSession(w, u)

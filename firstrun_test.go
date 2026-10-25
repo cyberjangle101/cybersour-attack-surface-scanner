@@ -40,7 +40,15 @@ func TestFirstRunCreatesPassphraseLockedKey(t *testing.T) {
 func TestFirstRunRefusesWithoutPassphrase(t *testing.T) {
 	t.Setenv("EASM_KEY_PASSPHRASE", "")
 	b := firstRunBoot(t)
-	if err := ensureKeyFile(b, slog.Default()); err == nil || fileExists(b.KeyPath()) {
+	err := ensureKeyFile(b, slog.Default())
+	if dpapiSupported {
+		// Windows (a service): the key is tied to the account instead of being left unprotected.
+		v, oerr := OpenVault(b.KeyPath())
+		if err != nil || oerr != nil || v.Protection() != keyWindows {
+			t.Fatalf("an unattended first start on Windows must protect the key with the account: %v / %v", err, oerr)
+		}
+		_ = os.Remove(b.KeyPath())
+	} else if err == nil || fileExists(b.KeyPath()) {
 		t.Fatalf("a first start with no terminal and no passphrase must stop, got %v", err)
 	}
 	t.Setenv("EASM_KEY_PASSPHRASE", "short")
