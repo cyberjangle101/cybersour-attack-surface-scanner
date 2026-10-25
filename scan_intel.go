@@ -139,7 +139,8 @@ func (s *Scanner) gatherIntel(ctx context.Context, t *Target, hosts []string, re
 }
 
 var highRiskPorts = map[int]bool{23: true, 445: true, 3389: true, 5900: true, 2375: true, 27017: true, 6379: true,
-	9200: true, 11211: true, 1433: true, 3306: true, 5432: true, 1521: true, 5984: true, 2049: true}
+	9200: true, 11211: true, 1433: true, 3306: true, 5432: true, 1521: true, 5984: true, 2049: true,
+	2379: true, 10250: true, 4786: true, 1099: true, 5555: true, 502: true, 102: true, 20000: true, 44818: true}
 
 // expiryRisk grades a domain's expiry date into a severity ("" when far enough away).
 func expiryRisk(expires string, now time.Time) (sev string, days int, ok bool) {

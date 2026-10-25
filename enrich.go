@@ -567,6 +567,12 @@ var riskyPorts = map[int]string{
 	1433: "Microsoft SQL Server", 1521: "Oracle DB", 2375: "Docker API (unencrypted)", 3306: "MySQL", 3389: "RDP",
 	5432: "PostgreSQL", 5900: "VNC", 5984: "CouchDB", 6379: "Redis", 9200: "Elasticsearch", 9300: "Elasticsearch transport",
 	11211: "Memcached", 27017: "MongoDB", 5601: "Kibana", 2049: "NFS", 111: "RPC portmapper", 161: "SNMP", 389: "LDAP", 5985: "WinRM (HTTP)",
+	// Added with the rules reference (docs/RULES.md): remote management, orchestration, legacy and industrial services.
+	5986: "WinRM (HTTPS)", 2376: "Docker API (TLS)", 6443: "Kubernetes API server", 10250: "Kubernetes kubelet API", 2379: "etcd",
+	4786: "Cisco Smart Install", 8291: "MikroTik Winbox", 1723: "PPTP VPN", 873: "rsync", 1099: "Java RMI registry",
+	8009: "Apache JServ (AJP)", 7001: "Oracle WebLogic", 4848: "GlassFish admin", 5555: "Android Debug Bridge",
+	9042: "Cassandra", 8086: "InfluxDB", 1883: "MQTT broker", 9100: "Printer (JetDirect)", 631: "Printer (IPP)",
+	502: "Modbus (industrial control)", 102: "Siemens S7 (industrial control)", 20000: "DNP3 (industrial control)", 44818: "EtherNet/IP (industrial control)",
 }
 
 // isRiskyPort says whether a TCP port is a sensitive service (RDP, SMB, databases...) and names it.

@@ -129,6 +129,9 @@ func (s *Scanner) gatherActive(ctx context.Context, t *Target, hosts []string, r
 			defer wg.Done()
 			defer func() { <-sem }()
 			wr := pr.probeWeb(ctx, j.host, j.ip, j.port, schemeFor(j.port))
+			if wr.Reached && j.port == 443 && (j.host == t.Domain || j.host == "www."+t.Domain) {
+				wr.SecTxt = pr.securityTxt(ctx, j.host, j.ip) // the organisation's main site should say how to report a vulnerability
+			}
 			mu.Lock()
 			if wr.Reached {
 				d.results = append(d.results, wr)
@@ -240,6 +243,23 @@ func (s *Scanner) applyActive(tx *Tx, root string, d *activeData, now string, em
 			if len(ti.Legacy) > 0 {
 				raise(k("tls-legacy"), "tls-legacy", "medium", wr.Host, fmt.Sprintf("%s still accepts %s.", where, strings.Join(ti.Legacy, " and ")), "")
 			}
+			if ti.WeakKey != "" {
+				raise(k("tls-weak-key"), "tls-weak-key", "medium", wr.Host, fmt.Sprintf("The certificate on %s uses %s.", where, ti.WeakKey), "")
+			}
+			if ti.WeakSig != "" {
+				raise(k("tls-weak-signature"), "tls-weak-signature", "medium", wr.Host, fmt.Sprintf("The certificate on %s is signed with %s.", where, ti.WeakSig), "")
+			}
+			if wr.Status >= 200 && wr.Status < 300 && !wr.HSTS && ti.Problem == "" {
+				raise(k("hsts-missing"), "hsts-missing", "low", wr.Host, fmt.Sprintf("%s does not send Strict-Transport-Security, so browsers may still try plain HTTP first.", wr.URL()), "")
+			}
+		}
+		for _, ph := range wr.Portals {
+			at := strings.TrimSuffix(wr.URL(), "/") + ph.Path
+			raise(k("login-portal", portalSlug(ph.Name)), "login-portal", ph.Severity, wr.Host,
+				fmt.Sprintf("%s login is public at %s (%s): %s.", ph.Name, at, strings.ToLower(ph.Category), portalWhy(ph.Category)), "")
+		}
+		if wr.SecTxt == "missing" {
+			raise(k("no-security-txt"), "no-security-txt", "low", wr.Host, fmt.Sprintf("%s has no /.well-known/security.txt telling researchers how to report a vulnerability.", wr.URL()), "")
 		}
 		if wr.DefaultPg != "" && wr.Status == 200 {
 			raise(k("default-page"), "default-page", "low", wr.Host, fmt.Sprintf("%s shows the %s: the service was installed and never set up.", wr.URL(), wr.DefaultPg), "")
