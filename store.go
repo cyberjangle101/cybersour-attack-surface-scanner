@@ -248,6 +248,8 @@ var migrateStmts = []string{
 	`ALTER TABLE findings ADD COLUMN verify_banner TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE findings ADD COLUMN verify_at TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE findings ADD COLUMN verify_by TEXT NOT NULL DEFAULT ''`,
+	// the exposure source's raw answer, shown as evidence on findings
+	`ALTER TABLE intel ADD COLUMN raw TEXT NOT NULL DEFAULT ''`,
 	`UPDATE findings SET scan_sev=severity WHERE scan_sev=''`,
 	// accounts: sign-in kind (local|ad), two-factor, state
 	`ALTER TABLE events ADD COLUMN muted INTEGER NOT NULL DEFAULT 0`,

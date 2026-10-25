@@ -354,6 +354,9 @@ func (e *Engine) scan(ctx context.Context, t *Target) {
 	}
 	e.finish(t, sc, startedAt, status, msg, wait)
 	e.saveHealth()
+	if status == "ok" && e.store.TakeVerifyOnce(t.Domain) {
+		e.confirmOpenPorts(ctx, t, settings.ActiveForeign)
+	}
 	if status != "interrupted" {
 		e.alertMu.Lock()
 		sc.FlushAlerts(ctx)

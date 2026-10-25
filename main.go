@@ -451,6 +451,13 @@ func main() {
 		afterUpd  = flag.Bool("after-update", false, "internal: started by an update; wait for the previous version to let go of the data folder")
 	)
 	flag.Parse()
+	if *afterUpd {
+		// Restarted by an update in a new console window: talk to that window so the
+		// key passphrase can be asked for (see useOwnConsole).
+		useOwnConsole()
+		promptOut = os.Stderr
+		_, _ = fmt.Fprintf(os.Stderr, "EASM Agent was updated to %s and is starting again.\n\n", version)
+	}
 	if *showVer {
 		fmt.Println("easm-agent", version)
 		return

@@ -3,15 +3,40 @@
 package main
 
 import (
+	"os"
 	"os/exec"
 	"syscall"
 	"unsafe"
+
+	"golang.org/x/term"
 )
 
 // inNewConsole gives cmd a console window of its own, as a double-click would.
+// os/exec still hands the child NUL for its standard handles, so the child calls
+// useOwnConsole to read and write that window.
 func inNewConsole(cmd *exec.Cmd) {
 	const createNewConsole = 0x00000010
 	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: createNewConsole}
+}
+
+// useOwnConsole points stdin, stdout and stderr at this process's console window
+// when they are not attached to it. An agent restarted by an update gets NUL for
+// all three, so without this it could not ask for the key passphrase and would
+// exit straight away with nothing on screen.
+func useOwnConsole() {
+	if hwnd, _, _ := procGetConsoleWindow.Call(); procGetConsoleWindow.Find() != nil || hwnd == 0 {
+		return
+	}
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		if in, err := os.OpenFile("CONIN$", os.O_RDWR, 0); err == nil {
+			os.Stdin = in
+		}
+	}
+	if !term.IsTerminal(int(os.Stdout.Fd())) || !term.IsTerminal(int(os.Stderr.Fd())) {
+		if out, err := os.OpenFile("CONOUT$", os.O_RDWR, 0); err == nil {
+			os.Stdout, os.Stderr = out, out
+		}
+	}
 }
 
 var (

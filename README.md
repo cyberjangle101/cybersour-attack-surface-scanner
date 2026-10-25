@@ -2,7 +2,7 @@
 
 A lightweight, single-binary agent for continuous **External Attack Surface Management (EASM)**. It runs as a persistent background service on Windows or Linux, watches the internet-facing footprint of the organisations you tell it about, and emails you only when something **changes**.
 
-> **Status:** v1.9.3. See "What's new in 1.9" below.
+> **Status:** v1.9.4. See "What's new in 1.9" below.
 
 ## Why
 
@@ -52,6 +52,11 @@ are emailed only about new subdomains, new IP/DNS records, new certificates and 
 * **Users:** admin, analyst and read-only viewer roles; local accounts with optional two-factor sign-in, or Active Directory sign-in (see *What's new in 1.6*).
 
 ## What's new in 1.9
+
+**v1.9.4:**
+* **Updates restart cleanly.** After *Back up and install* the new version now opens in its own window and asks for the key passphrase there, then carries on in the background. Before, the restarted program could not use its window, so it closed at once and had to be started by hand.
+* **Evidence for every finding.** *View evidence* (Findings page and each domain's page) opens a page with: what the agent recorded (ports per source, first and last reported), the **raw answer** each exposure source returned (Shodan InternetDB, Shodan, Censys, API keys removed), the active-scan result and banner, any **screenshots** of web services on the address, and links to check the data yourself (Shodan host page, InternetDB JSON, Censys, VirusTotal, NVD for CVEs, RDAP and crt.sh for domains). *Download evidence (JSON)* saves it all for a ticket. Raw answers are kept from the next scan that asks the source (*Scan now and refresh exposure data* fetches them at once).
+* **First-scan options when adding a domain:** *Active scanning enabled*, *Screenshots enabled* and *Confirm open ports* (connect to each open port the exposure data reports, as *Confirm via active scan* does, and record the result). They apply to the first scan; Settings → Active checks turns them on for every scan.
 
 **v1.9.3:**
 * **Pause stops the scan.** Pausing a domain while it is being scanned now stops that scan straight away (nothing from the stopped scan is saved) instead of letting it run to the end. Scan history records it as "stopped: monitoring was paused".

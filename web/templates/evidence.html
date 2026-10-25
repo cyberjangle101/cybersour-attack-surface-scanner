@@ -1,0 +1,64 @@
+{{define "content"}}
+{{with .E}}
+<div class="head">
+  <div>
+    <p class="muted small"><a href="/findings">Findings</a> › Evidence</p>
+    <h1>{{.Title}}</h1>
+    <p><span class="badge {{sevClass .F.Severity}}">{{upper .F.Severity}}</span> <span class="mono">{{.F.Host}}</span>{{if .IP}} · <span class="mono">{{.IP}}{{if .Port}}:{{.Port}}{{end}}</span>{{end}} · status {{.F.Status}}</p>
+  </div>
+  <div class="actions"><a class="btn" href="/findings/{{.F.ID}}/evidence.json">Download evidence (JSON)</a></div>
+</div>
+
+<section class="card">
+  <h2>What was found</h2>
+  <p class="prose">{{.F.Detail}}</p>
+  <dl class="facts">
+    <dt>Source of evidence</dt><dd>{{if .F.Source}}{{.F.Source}}{{else}}the agent's own DNS and certificate checks{{end}}</dd>
+    <dt>First seen</dt><dd>{{ts .F.FirstSeen}}</dd>
+    <dt>Last confirmed by a scan</dt><dd>{{ts .F.LastSeen}}</dd>
+    {{if eq .F.Kind "exposed-service"}}<dt>Active scan</dt><dd>{{if .F.VerifyState}}<span class="badge {{if eq .F.VerifyState "open"}}sev-high{{else}}muted{{end}}">{{verifyLabel .F.VerifyState}}</span> {{ts .F.VerifyAt}} by {{.F.VerifyBy}}{{if .F.VerifyBanner}}<div class="mono small">Banner: {{.F.VerifyBanner}}</div>{{end}}{{else}}Not verified yet{{if $.IsAdmin}}: use <em>Confirm via active scan</em> on the <a href="/findings">Findings</a> page{{end}}.{{end}}</dd>{{end}}
+    {{if .AssetURL}}<dt>Asset</dt><dd><a href="{{.AssetURL}}">Everything recorded about {{.IP}}</a></dd>{{end}}
+  </dl>
+</section>
+
+{{if .Links}}
+<section class="card">
+  <h2>Check it yourself</h2>
+  <p class="muted small">These open the source's own page in a new tab, so you can compare it with what the agent recorded. Your browser contacts the site, not the agent.</p>
+  <ul class="plain">{{range .Links}}<li><a href="{{.Href}}" target="_blank" rel="noopener noreferrer">{{.Label}} ↗</a> <span class="muted small">{{.Note}}</span></li>{{end}}</ul>
+</section>
+{{end}}
+
+{{if .Services}}
+<section class="card">
+  <h2>Open ports recorded for {{.IP}}{{if .Port}} (port {{.Port}}){{end}}</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Port</th><th>Source</th><th>Service reported</th><th>First reported</th><th>Last reported</th></tr></thead>
+    <tbody>{{range .Services}}<tr><td class="mono">{{.Port}}/{{.Transport}}</td><td>{{.Source}}</td><td>{{.Product}}</td><td>{{ts .FirstSeen}}</td><td>{{ts .LastSeen}}</td></tr>{{end}}</tbody>
+  </table></div>
+</section>
+{{end}}
+
+{{if .Shots}}
+<section class="card">
+  <h2>Screenshots</h2>
+  <p class="muted small">Taken by the agent's active checks.</p>
+  {{range .Shots}}<figure class="shotfig"><figcaption class="mono small">{{.Scheme}}://{{.Host}}:{{.Port}} · {{ts .Taken}}</figcaption><img class="shot" src="{{href "/shots" (printf "host=%s&port=%d" (urlquery .Host) .Port)}}" alt="Screenshot of {{.Host}}:{{.Port}}"></figure>{{end}}
+</section>
+{{else if .IP}}
+<section class="card"><h2>Screenshots</h2><p class="muted small">None stored for this address. Screenshots are taken of web services during scans with active checks and screenshots switched on (<em>Scan now with active checks</em>, or Settings → Active checks).</p></section>
+{{end}}
+
+{{if .Raw}}
+<section class="card">
+  <h2>Raw answers from the exposure sources</h2>
+  <p class="muted small">Exactly what each source returned for {{.IP}} at its last lookup (API keys removed). This is the data the finding was raised from.</p>
+  {{range .Raw}}
+  <details class="raw" open><summary><strong>{{.Label}}</strong> <span class="muted small">fetched {{ts .Fetched}}</span></summary>
+    {{if .JSON}}<pre class="mono small">{{.JSON}}</pre>{{else}}<p class="muted small">No raw answer stored yet: it is kept from the next scan that asks this source again (use <em>Scan now and refresh exposure data</em> to fetch it now).</p>{{end}}
+  </details>
+  {{end}}
+</section>
+{{end}}
+{{end}}
+{{end}}

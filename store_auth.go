@@ -409,6 +409,35 @@ func (s *Store) TakeActiveOnce(domain string) bool {
 	return true
 }
 
+// SetShotsOnce asks for the next scan of a domain to take screenshots (and run the
+// active checks they need), whatever Settings say: the "Screenshots enabled" box.
+func (s *Store) SetShotsOnce(domain string) error { return s.setMeta("shots:"+domain, "1") }
+
+// TakeShotsOnce reports (and clears) the one-shot screenshots request for a domain.
+func (s *Store) TakeShotsOnce(domain string) bool { return s.takeOnce("shots:" + domain) }
+
+// SetVerifyOnce asks for the open ports found by the next completed scan to be
+// confirmed with a connection: the "Confirm open ports" box.
+func (s *Store) SetVerifyOnce(domain string) error { return s.setMeta("verify:"+domain, "1") }
+
+// PeekVerifyOnce reports whether a confirm-open-ports request is waiting (kept until a scan completes).
+func (s *Store) PeekVerifyOnce(domain string) bool {
+	v, ok, err := s.getMeta("verify:" + domain)
+	return err == nil && ok && v != ""
+}
+
+// TakeVerifyOnce reports (and clears) the one-shot confirm-open-ports request.
+func (s *Store) TakeVerifyOnce(domain string) bool { return s.takeOnce("verify:" + domain) }
+
+func (s *Store) takeOnce(key string) bool {
+	v, ok, err := s.getMeta(key)
+	if err != nil || !ok || v == "" {
+		return false
+	}
+	_ = s.setMeta(key, "")
+	return true
+}
+
 // FindUserFold finds an account by name ignoring case (directory names are case-insensitive).
 func (s *Store) FindUserFold(name string) (*User, error) {
 	var id int64

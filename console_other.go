@@ -12,3 +12,6 @@ func hideConsole() bool { return false }
 
 // inNewConsole leaves cmd as it is outside Windows.
 func inNewConsole(*exec.Cmd) {}
+
+// useOwnConsole does nothing outside Windows.
+func useOwnConsole() {}
