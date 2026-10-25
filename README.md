@@ -2,7 +2,7 @@
 
 A lightweight, single-binary agent for continuous **External Attack Surface Management (EASM)**. It runs as a persistent background service on Windows or Linux, watches the internet-facing footprint of the organisations you tell it about, and emails you only when something **changes**.
 
-> **Status:** v1.9.0. See "What's new in 1.9" below.
+> **Status:** v1.9.1. See "What's new in 1.9" below.
 
 ## Why
 
@@ -52,6 +52,8 @@ are emailed only about new subdomains, new IP/DNS records, new certificates and 
 * **Users:** admin, analyst and read-only viewer roles; local accounts with optional two-factor sign-in, or Active Directory sign-in (see *What's new in 1.6*).
 
 ## What's new in 1.9
+
+**v1.9.1:** no functional changes. It is the first release that a v1.9.0 agent (the first build carrying the release key) can install itself from *System health → Updates*.
 
 **Updates itself, safely.** The agent checks GitHub once a day for a newer release (switch it off in *Settings → Organisation*) and tells administrators with a banner and on *System health → Updates*, with the release notes. *Back up and install* takes a backup, downloads the new version, and installs it only if it matches the release's `SHA256SUMS`, whose Ed25519 signature is checked against the key built into the program and which must name that exact version (so an old release cannot be passed off as new). The previous version is kept for `easm-agent -rollback`. On Windows, an agent started from its `.exe` restarts into the new version in a new window (enter the key passphrase there if it has one); services are updated with `easm-agent -update`, which stops and restarts the service around the swap. Releases are built and signed by CI from a version tag; see [RELEASING.md](RELEASING.md). Builds without a release key (such as your own) report new versions but never install them.
 
