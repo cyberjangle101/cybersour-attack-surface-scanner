@@ -40,11 +40,12 @@ type browser struct {
 	base string
 	c    *http.Client
 	csrf string
+	code func() string // the server's current setup code
 }
 
 func (e *webEnv) browser() *browser {
 	jar, _ := cookiejar.New(nil)
-	return &browser{t: e.t, base: e.srv.URL, c: &http.Client{Jar: jar, Timeout: 20 * time.Second,
+	return &browser{t: e.t, base: e.srv.URL, code: e.web.SetupCode, c: &http.Client{Jar: jar, Timeout: 20 * time.Second,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 }
 
@@ -107,7 +108,7 @@ func (b *browser) loginPre(path string) string {
 func (b *browser) setup(user, pw string) {
 	b.t.Helper()
 	tok := b.loginPre("/setup")
-	code, body, _ := b.postRaw("/setup", url.Values{"csrf": {tok}, "username": {user}, "password": {pw}, "confirm": {pw}})
+	code, body, _ := b.postRaw("/setup", url.Values{"csrf": {tok}, "code": {b.code()}, "username": {user}, "password": {pw}, "confirm": {pw}})
 	if code != 303 {
 		b.t.Fatalf("setup failed: %d %.300s", code, body)
 	}

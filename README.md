@@ -2,7 +2,7 @@
 
 A lightweight, single-binary agent for continuous **External Attack Surface Management (EASM)**. It runs as a persistent background service on Windows or Linux, watches the internet-facing footprint of the organisations you tell it about, and emails you only when something **changes**.
 
-> **Status:** v1.9.5. See "What's new in 1.9" below.
+> **Status:** v1.9.6. See "What's new in 1.9" below.
 
 ## Why
 
@@ -52,6 +52,13 @@ are emailed only about new subdomains, new IP/DNS records, new certificates and 
 * **Users:** admin, analyst and read-only viewer roles; local accounts with optional two-factor sign-in, or Active Directory sign-in (see *What's new in 1.6*).
 
 ## What's new in 1.9
+
+**v1.9.6 (deploying on a shared server):**
+* **The first administrator needs a one-time setup code.** Before, whoever submitted the setup page first became administrator, which on a server reachable from the network could be anyone. The code is written to `setup-code.txt` in the data folder, which only administrators can read. On a workstation it is filled in automatically on the page the agent opens. It changes at every start, is never logged, and stops working once the administrator exists.
+* **Services run as their own low-privilege account** (`NT SERVICE\easm-agent`), from `%ProgramFiles%\EASM Agent`, with data in `%ProgramData%\EASM Agent`. They start automatically and restart if they fail. See *Workstation or server*.
+* **The key can be protected with the Windows account (DPAPI)** instead of a passphrase. This is the default for a new service, and optional at a workstation's first start (press Enter). Only that account on that computer can open the key, so a copied data folder or backup is useless. System health → Encryption key shows how the key is protected. With your password (and two-factor code) you can download a **recovery copy** locked with a passphrase you choose, or switch an existing key to Windows-account protection. Both actions are audited.
+* **Fixed: the data folder's permissions under a service account.** They were given to the `USERNAME` variable, which under a service names the computer, not the service; they now go to the account the agent actually runs as.
+* **Double-clicking the program where it already runs as a service** opens that service's web page instead of starting a second, empty agent.
 
 **v1.9.5:**
 * **Findings from exposure data need two sources.** A finding raised only from Shodan data (open port, CVE list, tags) is marked **Unconfirmed**. It is still listed, but it is not emailed, not sent to channels and not counted in totals or reports. It becomes **Trusted** when a second, independent source agrees: Censys, the agent's own active check, or an analyst. InternetDB and the Shodan API are one dataset, so together they count once. When a scan runs with active checks on, the agent connects to each unconfirmed open port itself. A port that answers becomes trusted and alerts ("Now confirmed by a second source"); one that doesn't is marked **Disputed**. What no connection can prove, such as a CVE or an end-of-life tag, an analyst confirms with *Mark as confirmed*, saying how (audited, and can be removed). The Findings page has a *Corroboration* filter, each finding shows the sources that agree, and the dashboard shows the unconfirmed count separately. Findings from earlier versions are graded when the agent starts.
@@ -172,14 +179,32 @@ Notes:
 * Answers are cached for 24 hours and capped per scan (default 250 IPs per source) so large estates are covered over several scans. A finding is auto-resolved only when a fresh answer was obtained; an outage or stale cache never closes one.
 * Free-tier terms apply to InternetDB and the other services; check them if you use the agent commercially.
 
-## Running as a service
+## Workstation or server
 
+The same program runs in either role.
+
+**On a workstation (one person):** double-click `easm-agent.exe`.
+* **First start:** a console window asks for a key passphrase, or you press Enter to protect the key with your Windows account instead (nothing to type at later starts).
+* **Setting up:** the agent opens the setup page with the one-time setup code already filled in, and you create the administrator account.
+* **After that:** the window closes and the agent's icon stays next to the clock.
+* **Data and access:** the data lives in `%LocalAppData%\EASM Agent`, and the web interface only listens on `127.0.0.1`.
+
+**On a server (several people, through the browser):** install it once as a service, from an elevated prompt.
 ```
-easm-agent -service install     # Windows: run from an elevated prompt; Linux: as root
+easm-agent -service install -listen 0.0.0.0:8443
 easm-agent -service start
-easm-agent -service status
 ```
-Also available: `stop`, `restart`, `uninstall`. Logs go to the console/service manager, or to a file via the bootstrap config.
+* **Program:** copied to `%ProgramFiles%\EASM Agent`, and runs from there.
+* **Account:** it runs as `NT SERVICE\easm-agent`, a low-privilege account that Windows manages and that has no password. It does not run as LocalSystem, because the agent fetches internet data and drives a browser, so a flaw in it must not hand over the server. `-service-account DOMAIN\name$` uses a group managed service account instead.
+* **Data:** kept in `%ProgramData%\EASM Agent`, which only that account, SYSTEM and Administrators can open. Not in the installing administrator's profile.
+* **Encryption key:** created on the first start and protected with the service's own Windows account (DPAPI). There is no passphrase to store in an environment variable, which every user of the server could read. Then download a **recovery copy** (System health → Encryption key) and keep it offline; without it, a rebuilt server cannot open the data.
+* **First administrator:** open the address and enter the setup code from `%ProgramData%\EASM Agent\setup-code.txt`. Only administrators can read that file, so nobody else on the network can claim the agent first.
+* **Access for others:** add the name people will type to `allowed_hosts` in the config file and upload your organisation's certificate in System health. Everyone else signs in with their own account (local or Active Directory) as viewer, analyst or administrator; nobody needs to log on to the server.
+* **Restarts:** the service starts automatically (delayed start) and restarts if it fails.
+* **Updates:** run `easm-agent -update` from an elevated prompt, because the service account deliberately cannot change its own program file.
+* **Already-running service:** if someone double-clicks the program on that server, it opens the service's web page instead of starting a second, empty agent.
+
+Also available: `-service stop`, `restart`, `status`, `uninstall`. On Linux, `-service install` (as root) keeps data in `/var/lib/easm-agent`, and the passphrase comes from `EASM_KEY_PASSPHRASE`. Logs go to the service manager, or to a file via the bootstrap config.
 
 ## Options
 
@@ -193,7 +218,8 @@ Also available: `stop`, `restart`, `uninstall`. Logs go to the console/service m
 | `-update` | Download, verify and install the newest release (stops/starts the service around it); `-yes` skips the question |
 | `-rollback` | Go back to the version the last update replaced (stop the agent first) |
 | `-no-browser` | Do not open the web interface in the browser at start-up |
-| `-keep-console` | Windows: keep the console window visible after start-up |
+| `-keep-console` | Windows: keep the console window open after start-up |
+| `-service-account name` | With `-service install` on Windows: the account the service runs as (default `NT SERVICE\easm-agent`; or `DOMAIN\name$` for a group managed service account, or `LocalSystem`) |
 | `-service action` | install / uninstall / start / stop / restart / status |
 | `-version` | Print version |
 
@@ -206,7 +232,7 @@ Everything the agent stores is encrypted on disk, in two layers:
 * **Passwords** are never stored. Only a salted **bcrypt** hash is kept (and sealed as above). Hashing is the correct protection for passwords because even the agent cannot recover them.
 * **The key.** A random 256-bit master key is created on first start in `easm.key` (permissions 0600). The database key and the field key are derived from it with separate labels. Back up `easm.key` together with `easm.db`; without it the data cannot be read.
 * **Passphrase for the key file (asked on first start).** The very first time the agent starts it asks you to choose a passphrase (at least 12 characters, entered twice) and creates `easm.key` locked with it (scrypt + AES-256-GCM). Every later start asks for it again. A copied data folder is then useless without the passphrase. If the passphrase is lost the data cannot be recovered.
-  * Services and other unattended starts have no terminal: set the `EASM_KEY_PASSPHRASE` environment variable (on the very first start too). A first start with neither a terminal nor the variable stops with an explanation instead of silently creating an unprotected key.
+  * Services and other unattended starts have no terminal. On Windows the key is then protected with the service's account (DPAPI, see *Workstation or server*); elsewhere set the `EASM_KEY_PASSPHRASE` environment variable (on the very first start too). A first start that can do neither stops with an explanation instead of silently creating an unprotected key.
   * `-no-passphrase` (first start only, or `no_passphrase: true`) stores the key unprotected. Then the key sits next to the database, so encryption only protects a copied database or backup, not someone who can read the whole data folder.
   * `easm-agent -protect-key` / `-unprotect-key` add, change or remove the passphrase later.
 * **Limits to know about.** XTS gives confidentiality but no tamper detection: someone who can modify the file can corrupt it, though not read it. Data in memory while the agent runs is not encrypted. Everything lives in the data folder shown on **System health**; a different `-data-dir` means a different, empty database.

@@ -29,6 +29,33 @@
   </table></div>
 </section>
 
+{{if .IsAdmin}}{{with .Key}}
+<section class="card" id="key">
+  <h2>Encryption key</h2>
+  <p>The database and the stored passwords and API keys are encrypted with the key in <span class="mono">easm.key</span>.
+  {{if eq .Mode "windows"}}<span class="badge good">Protected by the Windows account</span> <span class="mono">{{.Account}}</span>: nothing is typed at start-up, and only that account on this computer can open the key. A copied data folder or backup is useless elsewhere.
+  {{else if eq .Mode "passphrase"}}<span class="badge good">Protected by a passphrase</span>, asked for at every start (or read from <span class="mono">EASM_KEY_PASSPHRASE</span>).
+  {{else}}<span class="badge bad">Not protected</span>: anyone who can read the data folder can decrypt everything.{{end}}</p>
+  {{if .NeedsCopy}}<div class="flash warn">No recovery copy has been made. If this computer or its Windows account is lost, the data cannot be opened anywhere else. Download a recovery copy now and keep it offline (for example in your password vault).</div>{{end}}
+  {{if .Recovery}}<p class="small muted">Last recovery copy: {{.Recovery}}.</p>{{end}}
+  <details class="triage"><summary class="btn small">Download a recovery copy</summary>
+    <form method="post" action="/system/key/recovery" class="stack"><input type="hidden" name="csrf" value="{{$.CSRF}}"> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
+      <p class="small">The key, locked with a passphrase you choose. To restore, save it as <span class="mono">easm.key</span> in the data folder and start the agent with that passphrase; it then works on any computer. Anyone with the file and the passphrase can read all the data.</p>
+      <label>Recovery passphrase <input type="password" name="passphrase" minlength="12" autocomplete="new-password" required><span class="hint">At least 12 characters. It is not stored anywhere.</span></label>
+      <label>Repeat it <input type="password" name="confirm" minlength="12" autocomplete="new-password" required></label>
+      <label>Your password <input type="password" name="current" autocomplete="current-password" required></label>
+      {{if .TwoFactor}}<label>Two-factor code <input name="code" inputmode="numeric" autocomplete="one-time-code" required></label>{{end}}
+      <button class="btn small" type="submit">Download</button></form>
+  </details>
+  {{if .CanWindows}}<details class="triage"><summary class="btn small">Protect with the Windows account</summary>
+    <form method="post" action="/system/key/windows" class="stack" data-confirm="Tie the key to the Windows account {{.Account}}? Only that account on this computer will be able to open it."><input type="hidden" name="csrf" value="{{$.CSRF}}"> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
+      <p class="small">Replaces the passphrase with the Windows account <span class="mono">{{.Account}}</span> that the agent runs as (Windows Data Protection API). Use it for a service, which cannot be asked for a passphrase and should not keep one in an environment variable that every user of the server can read. Afterwards remove <span class="mono">EASM_KEY_PASSPHRASE</span> and download a recovery copy.</p>
+      <label>Your password <input type="password" name="current" autocomplete="current-password" required></label>
+      {{if .TwoFactor}}<label>Two-factor code <input name="code" inputmode="numeric" autocomplete="one-time-code" required></label>{{end}}
+      <button class="btn small" type="submit">Protect with {{.Account}}</button></form>
+  </details>{{end}}
+</section>
+{{end}}{{end}}
 {{if .IsAdmin}}
 <section class="card" id="updates">
   <h2>Updates</h2>

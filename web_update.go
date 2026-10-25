@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -68,7 +70,13 @@ func (s *Server) updateInstall(w http.ResponseWriter, r *http.Request, sess *Ses
 	}
 	if err != nil {
 		s.audit(sess, r, "update.failed", st.Latest.Version, err.Error())
-		s.renderError(w, r, sess, http.StatusBadGateway, "Update not installed", err.Error()+" The running version is unchanged.")
+		hint := ""
+		if errors.Is(err, fs.ErrPermission) {
+			// A service account is deliberately not allowed to change its own program file.
+			hint = " This agent's account may not change the program file (as intended for a service). " +
+				"Update it from an elevated prompt on this computer: easm-agent -update"
+		}
+		s.renderError(w, r, sess, http.StatusBadGateway, "Update not installed", err.Error()+" The running version is unchanged."+hint)
 		return
 	}
 	s.audit(sess, r, "update.installed", st.Latest.Version, "previous version kept as "+filepath.Base(exe)+".old")

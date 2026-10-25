@@ -5,7 +5,8 @@
   {{if .Error}}<div class="flash bad">{{.Error}}</div>{{end}}
   <form method="post" action="/setup" autocomplete="off"> {{/* nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token -- Go template: the csrf hidden field is checked by s.auth or checkPreCSRF */}}
     <input type="hidden" name="csrf" value="{{.PreCSRF}}">
-    <label>Username <input name="username" value="{{.Username}}" autocomplete="username" autofocus required></label>
+    <label>Setup code <input name="code" id="setup-code" autocomplete="off" spellcheck="false" required placeholder="XXXXX-XXXXX-XXXXX-XXXXX"><span class="hint">Only the person who installed the agent can read it: it is in <span class="mono">setup-code.txt</span> in the agent's data folder, and in the window the agent opened when it started. It changes at every start.</span></label>
+    <label>Username <input name="username" value="{{.Username}}" autocomplete="username" required></label>
     <label>Password <input type="password" name="password" autocomplete="new-password" minlength="10" required><span class="hint">At least 10 characters.</span></label>
     <label>Confirm password <input type="password" name="confirm" autocomplete="new-password" minlength="10" required></label>
     <button class="btn primary" type="submit">Create administrator</button>
