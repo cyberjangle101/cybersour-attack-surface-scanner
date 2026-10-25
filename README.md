@@ -12,7 +12,7 @@ Attack surfaces drift. A forgotten subdomain, a new certificate or an unexpected
 
 - **Passive discovery, zero cost, no API keys**
   - Certificate transparency via crt.sh
-  - HackerTarget and AlienVault OTX passive DNS
+  - HackerTarget host search, plus AlienVault OTX passive DNS with a free OTX key
 - **DNS resolution** of A, AAAA, CNAME, NS, MX and TXT records via 1.1.1.1 and 8.8.8.8
 - **ASN mapping** (BGPView or Team Cymru DNS WHOIS) to spot assets outside your expected network ranges
 - **Delta-only alerting**: new subdomains, new IP resolutions and new TLS certificates trigger notifications, so routine scans stay quiet
@@ -42,7 +42,7 @@ are emailed only about new subdomains, new IP/DNS records, new certificates and 
 
 ## What it does
 
-* **Discovery (free, no keys):** crt.sh (retry/backoff), HackerTarget, AlienVault OTX, Anubis.
+* **Discovery (free):** crt.sh (retry/backoff) and HackerTarget need no key; AlienVault OTX needs a free API key. Anubis is still listed but off, because its service now blocks automated clients.
 * **Resolution:** A/AAAA/CNAME/NS/MX/TXT via 1.1.1.1 and 8.8.8.8, bounded workers and a global QPS cap, wildcard-DNS detection.
 * **Ownership:** Team Cymru DNS WHOIS (RIPEstat fallback) maps IPs to ASN/organisation; addresses outside your expected ASNs/keywords raise a HIGH finding.
 * **Exposure intelligence:** open ports, CVEs and risk tags per IP, and domain expiry (see below).
@@ -59,6 +59,9 @@ are emailed only about new subdomains, new IP/DNS records, new certificates and 
 * **The key can be protected with the Windows account (DPAPI)** instead of a passphrase. This is the default for a new service, and optional at a workstation's first start (press Enter). Only that account on that computer can open the key, so a copied data folder or backup is useless. System health → Encryption key shows how the key is protected. With your password (and two-factor code) you can download a **recovery copy** locked with a passphrase you choose, or switch an existing key to Windows-account protection. Both actions are audited.
 * **Fixed: the data folder's permissions under a service account.** They were given to the `USERNAME` variable, which under a service names the computer, not the service; they now go to the account the agent actually runs as.
 * **Double-clicking the program where it already runs as a service** opens that service's web page instead of starting a second, empty agent.
+* **AlienVault OTX needs a free API key.** OTX now refuses passive-DNS lookups without one, which System health showed as "Rate limited by the service" on every scan. Create a free account at otx.alienvault.com, copy the key from its API Integration page and paste it in Settings → Data sources. The key is stored encrypted like the other API keys. OTX only runs once a key is saved, and new installs start with it off.
+* **Anubis is off by default.** `jldc.me` moved to `jonlu.ca`, which answers every automated client with a Cloudflare bot challenge, so it failed on every scan with "rejected the credentials". System health now says so plainly. **After updating:** in Settings, paste an OTX key or untick OTX, and untick Anubis. Until OTX gets a key or is unticked, saving Settings asks you to choose.
+* **Every pull request is now compiled, linted and tested on Linux and Windows** before it can merge, so a change that breaks the build can no longer reach a release.
 
 **v1.9.5:**
 * **Findings from exposure data need two sources.** A finding raised only from Shodan data (open port, CVE list, tags) is marked **Unconfirmed**. It is still listed, but it is not emailed, not sent to channels and not counted in totals or reports. It becomes **Trusted** when a second, independent source agrees: Censys, the agent's own active check, or an analyst. InternetDB and the Shodan API are one dataset, so together they count once. When a scan runs with active checks on, the agent connects to each unconfirmed open port itself. A port that answers becomes trusted and alerts ("Now confirmed by a second source"); one that doesn't is marked **Disputed**. What no connection can prove, such as a CVE or an end-of-life tag, an analyst confirms with *Mark as confirmed*, saying how (audited, and can be removed). The Findings page has a *Corroboration* filter, each finding shows the sources that agree, and the dashboard shows the unconfirmed count separately. Findings from earlier versions are graded when the agent starts.
@@ -169,11 +172,12 @@ Domains are scanned in parallel (default 2 at a time, **Settings → Domains sca
 | Shodan API | your key | banners/products and vulnerabilities per IP (host lookups use no query credits); optional subdomain search via Shodan DNS (uses a query credit) |
 | Censys Platform | your personal access token | services seen on each IP (free accounts can do host lookups) |
 | VirusTotal | your key | subdomains (free key: 4 requests/min, 500/day; the agent paces itself and reads at most 120 names per scan) |
+| AlienVault OTX | your free key | subdomains from passive DNS (entered under Settings → Data sources) |
 
 Notes:
 
 * Keys are entered in **Settings**, stored AES-256-GCM encrypted, never displayed again, and scrubbed from logs and error messages. A rejected key stops further requests to that service for the rest of the scan.
-* **These services receive the IP addresses (and, for Shodan DNS and VirusTotal, the domain names) you monitor.** The agent never scans or connects to your hosts itself. Each source is opt-in or can be switched off.
+* **These services receive the IP addresses (and, for Shodan DNS, VirusTotal and OTX, the domain names) you monitor.** The agent never scans or connects to your hosts itself. Each source is opt-in or can be switched off.
 * Findings from these sources come from third-party scan data that may be days old, and CVEs are inferred from service banners (back-ported fixes can make some false positives). Treat them as leads to verify.
 * Addresses tagged `cdn`, and addresses outside an entity's expected ASNs, are inventoried but do **not** raise exposure findings, because they are not yours to fix.
 * Answers are cached for 24 hours and capped per scan (default 250 IPs per source) so large estates are covered over several scans. A finding is auto-resolved only when a fresh answer was obtained; an outage or stale cache never closes one.
