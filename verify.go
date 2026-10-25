@@ -114,6 +114,49 @@ func serviceTarget(f *Finding) (ip string, port int, ok bool) {
 	return ip, p, true
 }
 
+// maxAutoConfirm caps how many ports one "Confirm open ports" run connects to.
+const maxAutoConfirm = 100
+
+// confirmOpenPorts runs checkService on every open exposed-service finding of a
+// domain (the "Confirm open ports" box when adding it). Addresses outside the
+// expected ownership are skipped unless foreign is allowed, as for a manual check.
+func (e *Engine) confirmOpenPorts(ctx context.Context, t *Target, foreign bool) {
+	fs, err := e.store.ListFindings(t.Domain, "open")
+	if err != nil {
+		e.log.Warn("confirm open ports: cannot list findings", "domain", t.Domain, "err", err)
+		return
+	}
+	done, skipped := 0, 0
+	for i := range fs {
+		f := &fs[i]
+		ip, port, ok := serviceTarget(f)
+		if !ok {
+			continue
+		}
+		if ctx.Err() != nil || done >= maxAutoConfirm {
+			break
+		}
+		if strings.Contains(f.Detail, "outside the expected ownership") && !foreign {
+			skipped++
+			continue
+		}
+		cctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		res := checkService(cctx, ip, port)
+		cancel()
+		if err := e.store.SetFindingVerification(f.ID, res.State, res.Banner, "first scan"); err != nil {
+			e.log.Warn("confirm open ports: cannot store result", "err", err)
+			continue
+		}
+		detail := res.State
+		if res.Banner != "" {
+			detail += "; banner: " + res.Banner
+		}
+		_ = e.store.Audit("system", "system", "finding.verify", net.JoinHostPort(ip, strconv.Itoa(port)), detail+" (Confirm open ports, first scan of "+t.Domain+")", "")
+		done++
+	}
+	e.log.Info("open ports confirmed", "domain", t.Domain, "checked", done, "skipped_outside_ownership", skipped)
+}
+
 // verifyLabel words a stored check result for the findings table.
 func verifyLabel(state string) string {
 	switch state {

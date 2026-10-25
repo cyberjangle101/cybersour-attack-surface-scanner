@@ -147,7 +147,7 @@ func NewServer(store *Store, eng *Engine, log *slog.Logger, boot *Bootstrap) (*S
 		},
 	}
 	s.tpl = map[string]*template.Template{}
-	pages := []string{"login", "setup", "dashboard", "guide", "targets", "target_delete", "target", "findings", "events", "assets", "asset", "health", "report", "settings", "users", "account", "error", "moved", "audit", "ad", "channels", "login2fa", "twofactor"}
+	pages := []string{"login", "setup", "dashboard", "guide", "targets", "target_delete", "target", "findings", "evidence", "events", "assets", "asset", "health", "report", "settings", "users", "account", "error", "moved", "audit", "ad", "channels", "login2fa", "twofactor"}
 	for _, p := range pages {
 		t, err := template.New(p).Funcs(funcs).ParseFS(webFS, "web/templates/layout.html", "web/templates/progress.html", "web/templates/triage.html", "web/templates/targetstable.html", "web/templates/"+p+".html")
 		if err != nil {
@@ -249,6 +249,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /findings/{id}/reopen", s.auth(permTriage, s.findingReopen))
 	mux.HandleFunc("POST /findings/{id}/severity", s.auth(permTriage, s.findingSeverity))
 	mux.HandleFunc("POST /findings/{id}/verify", s.auth(permAdmin, s.findingVerify))
+	mux.HandleFunc("GET /findings/{id}/evidence", s.auth(permView, s.findingEvidence))
+	mux.HandleFunc("GET /findings/{id}/evidence.json", s.auth(permView, s.findingEvidenceJSON))
 	mux.HandleFunc("GET /events", s.auth(permView, s.events))
 	mux.HandleFunc("GET /assets", s.auth(permView, s.assets))
 	mux.HandleFunc("GET /assets.csv", s.auth(permView, s.assetsCSV))
@@ -872,10 +874,22 @@ func (s *Server) targetAdd(w http.ResponseWriter, r *http.Request, sess *Session
 	if err == nil {
 		var id int64
 		if id, err = s.store.AddTarget(t); err == nil {
-			s.audit(sess, r, "target.add", t.Domain, "")
-			s.log.Info("target added", "domain", t.Domain, "by", sess.Username)
+			opts := s.firstScanOptions(r, t.Domain)
+			s.audit(sess, r, "target.add", t.Domain, strings.Join(opts, ", "))
+			s.log.Info("target added", "domain", t.Domain, "by", sess.Username, "first_scan", strings.Join(opts, ", "))
 			s.eng.Wake()
-			s.flash(sess, "good", fmt.Sprintf("Now monitoring %s. The first scan (baseline) is starting; no alerts are sent for what already exists.", t.Domain))
+			msg := fmt.Sprintf("Now monitoring %s. The first scan (baseline) is starting; no alerts are sent for what already exists.", t.Domain)
+			if len(opts) > 0 {
+				msg += " First scan: " + strings.Join(opts, ", ") + "."
+			}
+			s.flash(sess, "good", msg)
+			if r.PostFormValue("first_shots") == "1" {
+				if st, err := s.store.LoadSettings(); err == nil {
+					if _, berr := findBrowser(st.ChromePath); berr != nil {
+						s.flash(sess, "warn", "Screenshots need Chrome or Edge on this machine and none was found, so the first scan will run without them. Install one, or set its path under Settings → Active checks.")
+					}
+				}
+			}
 			if adv := s.scopeAdvice(t.Domain); adv != "" {
 				s.flash(sess, "warn", fmt.Sprintf("Now monitoring %s. Note: %s", t.Domain, adv))
 			}
@@ -886,6 +900,29 @@ func (s *Server) targetAdd(w http.ResponseWriter, r *http.Request, sess *Session
 	s.stashForm(sess, r)
 	s.flash(sess, "bad", err.Error())
 	http.Redirect(w, r, "/#add", http.StatusSeeOther)
+}
+
+// firstScanOptions applies the "First scan" boxes of the add form as one-shot
+// requests for the new domain's first scan and names what was asked for.
+// Adding a domain is admin-only, as are active checks.
+func (s *Server) firstScanOptions(r *http.Request, domain string) []string {
+	var opts []string
+	if r.PostFormValue("first_active") == "1" {
+		if s.store.SetActiveOnce(domain) == nil {
+			opts = append(opts, "active scanning")
+		}
+	}
+	if r.PostFormValue("first_shots") == "1" {
+		if s.store.SetShotsOnce(domain) == nil {
+			opts = append(opts, "screenshots")
+		}
+	}
+	if r.PostFormValue("first_verify") == "1" {
+		if s.store.SetVerifyOnce(domain) == nil {
+			opts = append(opts, "confirm open ports")
+		}
+	}
+	return opts
 }
 
 // scopeAdvice explains the reduced coverage of a sub-domain target, or returns "" for a normal domain.

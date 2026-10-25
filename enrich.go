@@ -35,6 +35,7 @@ type IPIntel struct {
 	Services   []Service
 	Fetched    string // RFC3339
 	Fresh      bool   // fetched during this scan (as opposed to reused from the cache)
+	Raw        string // the source's answer as received (secrets removed), kept as evidence
 }
 
 // DomainInfo is registration data from RDAP.
@@ -110,6 +111,22 @@ func (e *Enricher) secrets() []string {
 // getJSON performs a GET and decodes JSON. Keys may travel in the URL (Shodan), so
 // every returned error is scrubbed of secrets and never contains the URL itself.
 func (e *Enricher) getJSON(ctx context.Context, u string, hdr map[string]string, out any) error {
+	_, err := e.getJSONRaw(ctx, u, hdr, out)
+	return err
+}
+
+// rawEvidenceMax caps how much of a source's answer is kept as evidence.
+const rawEvidenceMax = 64 << 10
+
+// getJSONRaw is getJSON that also returns the response body (capped, with any
+// configured secret removed), kept with the finding as the source's raw answer.
+func (e *Enricher) getJSONRaw(ctx context.Context, u string, hdr map[string]string, out any) (string, error) {
+	var raw string
+	err := e.fetchJSON(ctx, u, hdr, out, &raw)
+	return raw, err
+}
+
+func (e *Enricher) fetchJSON(ctx context.Context, u string, hdr map[string]string, out any, raw *string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return errors.New("bad request")
@@ -144,6 +161,15 @@ func (e *Enricher) getJSON(ctx context.Context, u string, hdr map[string]string,
 			return errors.New("unreadable response")
 		}
 	}
+	if raw != nil {
+		s := string(body)
+		for _, k := range e.secrets() {
+			if len(k) >= 4 {
+				s = strings.ReplaceAll(s, k, "[redacted]")
+			}
+		}
+		*raw = truncate(s, rawEvidenceMax)
+	}
 	return nil
 }
 
@@ -158,13 +184,14 @@ func (e *Enricher) internetDB(ctx context.Context, ip string) (*IPIntel, error) 
 		Tags      []string `json:"tags"`
 		Vulns     []string `json:"vulns"`
 	}
-	if err := e.getJSON(ctx, e.urls.internetdb+url.PathEscape(ip), nil, &r); err != nil {
+	raw, err := e.getJSONRaw(ctx, e.urls.internetdb+url.PathEscape(ip), nil, &r)
+	if err != nil {
 		if errors.Is(err, errNoData) {
 			return &IPIntel{IP: ip, Source: "internetdb"}, nil // known to the service, nothing exposed
 		}
 		return nil, err
 	}
-	in := &IPIntel{IP: ip, Source: "internetdb", Hostnames: r.Hostnames, Tags: r.Tags, CPEs: r.CPEs, Vulns: cleanCVEs(r.Vulns)}
+	in := &IPIntel{IP: ip, Source: "internetdb", Hostnames: r.Hostnames, Tags: r.Tags, CPEs: r.CPEs, Vulns: cleanCVEs(r.Vulns), Raw: raw}
 	for _, p := range r.Ports {
 		in.Services = append(in.Services, Service{Port: p, Transport: "tcp"})
 	}
@@ -188,13 +215,14 @@ func (e *Enricher) shodanHost(ctx context.Context, ip string) (*IPIntel, error) 
 		} `json:"data"`
 	}
 	u := e.urls.shodan + "shodan/host/" + url.PathEscape(ip) + "?key=" + url.QueryEscape(e.cfg.Shodan.Key)
-	if err := e.getJSON(ctx, u, nil, &r); err != nil {
+	raw, err := e.getJSONRaw(ctx, u, nil, &r)
+	if err != nil {
 		if errors.Is(err, errNoData) {
 			return &IPIntel{IP: ip, Source: "shodan"}, nil
 		}
 		return nil, err
 	}
-	in := &IPIntel{IP: ip, Source: "shodan", Hostnames: r.Hostnames, Tags: r.Tags, Vulns: cleanCVEs(r.Vulns), Org: r.Org, OS: r.OS}
+	in := &IPIntel{IP: ip, Source: "shodan", Hostnames: r.Hostnames, Tags: r.Tags, Vulns: cleanCVEs(r.Vulns), Org: r.Org, OS: r.OS, Raw: raw}
 	seen := map[string]bool{}
 	for _, d := range r.Data {
 		tr := strings.ToLower(d.Transport)
@@ -230,13 +258,14 @@ func (e *Enricher) censysHost(ctx context.Context, ip string) (*IPIntel, error) 
 	if e.cfg.Censys.OrgID != "" {
 		hdr["X-Organization-ID"] = e.cfg.Censys.OrgID
 	}
-	if err := e.getJSON(ctx, u, hdr, &r); err != nil {
+	raw, err := e.getJSONRaw(ctx, u, hdr, &r)
+	if err != nil {
 		if errors.Is(err, errNoData) {
 			return &IPIntel{IP: ip, Source: "censys"}, nil
 		}
 		return nil, err
 	}
-	in := &IPIntel{IP: ip, Source: "censys"}
+	in := &IPIntel{IP: ip, Source: "censys", Raw: raw}
 	seen := map[string]bool{}
 	for _, s := range r.Result.Resource.Services {
 		tr := strings.ToLower(s.Transport)

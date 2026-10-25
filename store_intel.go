@@ -16,11 +16,84 @@ func csvSplit(s string) []string {
 	return strings.Split(s, ",")
 }
 
-// PutIntel stores (or refreshes) what one source knows about one IP.
+// PutIntel stores (or refreshes) what one source knows about one IP. A refresh
+// without a raw answer keeps the one already stored.
 func (t *Tx) PutIntel(in *IPIntel) error {
-	_, err := t.tx.Exec(`INSERT OR REPLACE INTO intel(ip,source,hostnames,tags,cpes,vulns,org,os,fetched) VALUES(?,?,?,?,?,?,?,?,?)`,
-		in.IP, in.Source, csvJoin(in.Hostnames), csvJoin(in.Tags), csvJoin(in.CPEs), csvJoin(in.Vulns), in.Org, in.OS, in.Fetched)
+	_, err := t.tx.Exec(`INSERT INTO intel(ip,source,hostnames,tags,cpes,vulns,org,os,fetched,raw) VALUES(?,?,?,?,?,?,?,?,?,?)
+		ON CONFLICT(ip,source) DO UPDATE SET hostnames=excluded.hostnames, tags=excluded.tags, cpes=excluded.cpes, vulns=excluded.vulns,
+		org=excluded.org, os=excluded.os, fetched=excluded.fetched, raw=CASE WHEN excluded.raw<>'' THEN excluded.raw ELSE intel.raw END`,
+		in.IP, in.Source, csvJoin(in.Hostnames), csvJoin(in.Tags), csvJoin(in.CPEs), csvJoin(in.Vulns), in.Org, in.OS, in.Fetched, in.Raw)
 	return err
+}
+
+// RawIntel is one source's stored answer about an IP.
+type RawIntel struct{ Source, Fetched, Raw string }
+
+// IntelRaw returns every source's stored raw answer for an IP, by source name.
+func (s *Store) IntelRaw(ip string) ([]RawIntel, error) {
+	rows, err := s.db.Query(`SELECT source, fetched, raw FROM intel WHERE ip=? ORDER BY source`, ip)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []RawIntel
+	for rows.Next() {
+		var r RawIntel
+		if err := rows.Scan(&r.Source, &r.Fetched, &r.Raw); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// ServiceRec is one stored observation of an open port.
+type ServiceRec struct {
+	Port                                           int
+	Transport, Source, Product, FirstSeen, LastSeen string
+}
+
+// ServicesFor lists what every source reported for an IP (port 0 = all ports).
+func (s *Store) ServicesFor(ip string, port int) ([]ServiceRec, error) {
+	rows, err := s.db.Query(`SELECT port, transport, source, product, first_seen, last_seen FROM services WHERE ip=? AND (?=0 OR port=?) ORDER BY port, source`, ip, port, port)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []ServiceRec
+	for rows.Next() {
+		var r ServiceRec
+		if err := rows.Scan(&r.Port, &r.Transport, &r.Source, &r.Product, &r.FirstSeen, &r.LastSeen); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// ShotsForIP lists stored screenshots of web services on an IP (or on host).
+func (s *Store) ShotsForIP(ip, host string) ([]WebShotRef, error) {
+	rows, err := s.db.Query(`SELECT w.host, w.port, ws.taken, w.scheme FROM web_services w JOIN web_shots ws ON ws.host=w.host AND ws.port=w.port
+		WHERE w.ip=? OR w.host=? ORDER BY w.host, w.port`, ip, host)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []WebShotRef
+	for rows.Next() {
+		var r WebShotRef
+		if err := rows.Scan(&r.Host, &r.Port, &r.Taken, &r.Scheme); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// WebShotRef points at a stored screenshot.
+type WebShotRef struct {
+	Host, Taken, Scheme string
+	Port                int
 }
 
 // UpsertService records an open port and reports whether (ip, port, transport) was

@@ -43,6 +43,16 @@
         <label class="wide">Notes <input name="notes" maxlength="500" value="{{index .Form "notes"}}" placeholder="Owner, ticket, anything useful"></label>
       </div>
     </details>
+    <fieldset class="wide firstscan">
+      <legend>First scan</legend>
+      <p class="hint">Without these the first scan is passive: it only asks public sources and never contacts the domain's own servers. Only tick them for systems you are allowed to test.</p>
+      <label class="check"><input type="checkbox" name="first_active" value="1" {{if or .Settings.ActiveChecks (index .Form "first_active")}}checked{{end}} {{if .Settings.ActiveChecks}}disabled{{end}}>
+        <span>Active scanning enabled{{if .Settings.ActiveChecks}} <span class="muted">(on for every scan in Settings)</span>{{end}}<span class="hint">Connect to the domain's own servers: TLS certificates, home pages, exposed files and cloud storage, as set under Settings → Active checks.</span></span></label>
+      <label class="check"><input type="checkbox" name="first_shots" value="1" {{if or .Settings.Screenshots (index .Form "first_shots")}}checked{{end}} {{if .Settings.Screenshots}}disabled{{end}}>
+        <span>Screenshots enabled{{if .Settings.Screenshots}} <span class="muted">(on for every active scan in Settings)</span>{{end}}<span class="hint">Capture each web page found, as evidence (turns on active scanning for this scan; needs Chrome or Edge on this machine).</span></span></label>
+      <label class="check"><input type="checkbox" name="first_verify" value="1" {{if index .Form "first_verify"}}checked{{end}}>
+        <span>Confirm open ports<span class="hint">After the scan, connect to each open port reported by Shodan / InternetDB / Censys and record whether it really answers (as <em>Confirm via active scan</em> does on a finding).</span></span></label>
+    </fieldset>
     <div class="wide"><button class="btn primary" type="submit">Add and start monitoring</button></div>
   </form>
 </section>

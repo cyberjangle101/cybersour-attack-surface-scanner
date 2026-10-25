@@ -168,6 +168,10 @@ func (s *Scanner) scanTarget(ctx context.Context, t *Target) error {
 		s.cfg.Active.Enabled = true // this scan only: the config is rebuilt for every scan
 		log.Info("active checks requested for this scan")
 	}
+	if s.store.TakeShotsOnce(root) {
+		s.cfg.Active.Enabled, s.cfg.Active.Shots = true, true // this scan only
+		log.Info("screenshots requested for this scan")
+	}
 	if s.cfg.Active.Enabled && s.onActive != nil {
 		s.onActive()
 	}

@@ -112,6 +112,14 @@ td.prose strong { display: block; margin-bottom: 2px; }
 .prog-l { font-size: .8rem; }
 .warn-t { color: var(--warn); }
 .info-t { color: var(--info); font-weight: 600; }
+fieldset.firstscan { border: 1px solid var(--line, #8884); border-radius: 8px; padding: 10px 14px; display: grid; gap: 8px; }
+fieldset.firstscan legend { font-weight: 600; padding: 0 6px; }
+details.raw { margin: 10px 0; }
+details.raw pre { max-height: 420px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--muted-bg); padding: 10px; border-radius: 6px; }
+ul.plain { list-style: none; padding: 0; margin: 0; }
+ul.plain li { margin: 6px 0; }
+figure.shotfig { margin: 0 0 14px; }
+.evlink { display: inline-block; margin-top: 4px; font-weight: 600; }
 
 .facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 18px; margin: 0; }
 .facts dt { color: var(--muted); font-size: .85rem; }
