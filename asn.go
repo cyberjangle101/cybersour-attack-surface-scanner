@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -165,6 +166,9 @@ func parseCymruOrigin(s string) (asn int, prefix, cc string, err error) {
 	n, err := strconv.ParseUint(f[0], 10, 32)
 	if err != nil {
 		return 0, "", "", fmt.Errorf("bad ASN in cymru origin record: %w", err)
+	}
+	if n > uint64(math.MaxInt) {
+		return 0, "", "", fmt.Errorf("ASN out of range for int: %d", n)
 	}
 	return int(n), strings.TrimSpace(parts[1]), strings.TrimSpace(parts[2]), nil
 }
