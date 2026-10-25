@@ -17,9 +17,12 @@ jobs:
     permissions:
       contents: write # create the release
     steps:
-      - uses: actions/checkout@v7
+      # Actions pinned to commit SHAs: this job holds the signing key and can publish
+      # releases, so a re-pointed tag must not be able to run code here. Dependabot
+      # (github-actions) keeps the pins current.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version: stable # newest toolchain: release builds pick up stdlib security fixes
           check-latest: true

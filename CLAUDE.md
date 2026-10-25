@@ -93,7 +93,8 @@ Always test the feature that changed, plus anything it could break. Add a Go tes
 ## Releasing
 
 - Branch from an updated `main`: `feat/vX.Y.Z` or `fix/<name>`. Never commit to `main`.
-- One commit per PR if the branch already has an open PR: the repo rejects a second push while code scanning is running.
+- Force-pushes are blocked on every branch (never amend or rebase pushed commits). Fixes go in a new commit, pushed only after
+  code scanning for the previous push has finished: the repo rejects a push while it is still running.
 - Open the PR with the REST API: `gh api repos/cyberjangle101/cybersour-attack-surface-scanner/pulls -f title=... -f head=... -f base=main -F body=@file.md`
   (`gh pr create` fails here because GraphQL is blocked).
 - `main` needs the Security Scan workflow to pass and owner approval. Do not try to bypass it.

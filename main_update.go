@@ -145,7 +145,7 @@ func (p *program) restartAfterUpdate() {
 						args = append(args, a)
 					}
 				}
-				cmd := exec.Command(exe, append(args, "-after-update")...) //nolint:gosec // G204: this program, restarting itself with its own arguments
+				cmd := exec.Command(exe, append(args, "-after-update")...) //nolint:gosec // nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command -- G204: exe is os.Executable() (this program restarting itself) and args are its own command line; no outside input
 				inNewConsole(cmd)
 				if err = cmd.Start(); err == nil {
 					p.log.Info("restarting into the updated program", "pid", cmd.Process.Pid)
