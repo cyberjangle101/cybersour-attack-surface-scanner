@@ -1,0 +1,73 @@
+name: CI
+
+# Compile, lint and test every pull request and every push to main, so a change that
+# does not build (on either OS) shows a red check before it merges. Much of the agent
+# is Windows-only (*_windows.go: DPAPI, tray, console, ACLs), hence the Windows job.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Job names are meant to be required status checks on main: keep them stable.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  linux:
+    name: Build, lint and test (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: stable # same toolchain as release.yml
+          check-latest: true
+          cache: true
+
+      - name: Vet
+        run: go vet ./...
+
+      # The release binary, not golangci/golangci-lint-action: the repository only allows
+      # GitHub-owned and verified-creator actions. Same version as the local full gate.
+      - name: Install golangci-lint (checksum-verified release)
+        env:
+          GOLANGCI_LINT_VERSION: "2.15.0"
+          GOLANGCI_LINT_SHA256: "9b7fe6a6bf6334b98decf8d86b11415ea7889afdabdd1959fdce23af2a9ebcea"
+        run: |
+          archive="golangci-lint-${GOLANGCI_LINT_VERSION}-linux-amd64"
+          curl -sSfL -o "$RUNNER_TEMP/golangci-lint.tar.gz" \
+            "https://github.com/golangci/golangci-lint/releases/download/v${GOLANGCI_LINT_VERSION}/${archive}.tar.gz"
+          echo "${GOLANGCI_LINT_SHA256}  $RUNNER_TEMP/golangci-lint.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/golangci-lint.tar.gz" -C "$RUNNER_TEMP" --strip-components=1 "${archive}/golangci-lint"
+
+      - name: Lint
+        run: '"$RUNNER_TEMP/golangci-lint" run ./...'
+
+      - name: Tests (race detector)
+        env:
+          CGO_ENABLED: "1"
+        run: go test -race -count=1 ./...
+
+  windows:
+    name: Build and test (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: stable
+          check-latest: true
+          cache: true
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Tests
+        run: go test -count=1 ./...
