@@ -167,7 +167,8 @@ func parseCymruOrigin(s string) (asn int, prefix, cc string, err error) {
 	if err != nil {
 		return 0, "", "", fmt.Errorf("bad ASN in cymru origin record: %w", err)
 	}
-	if n > uint64(math.MaxInt) {
+	// Use an explicit constant bound check so conversion to int is safe on 32-bit and 64-bit platforms.
+	if n > 2147483647 {
 		return 0, "", "", fmt.Errorf("ASN out of range for int: %d", n)
 	}
 	return int(n), strings.TrimSpace(parts[1]), strings.TrimSpace(parts[2]), nil
