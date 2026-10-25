@@ -80,6 +80,7 @@ type ExecSummary struct {
 	Open        int
 	OpenBySev   map[string]int
 	Accepted    int
+	Unconfirmed int // open findings from one third-party source only: left out of the counts and lists
 	NewCount    int
 	NewHigh     int
 	Resolved    int
@@ -173,6 +174,10 @@ func enrichReport(rep *Report, all []Finding, since time.Time, opts ReportOpts) 
 	ex := &rep.Exec
 	ex.OpenBySev = map[string]int{}
 	for _, f := range all {
+		if f.Status == "open" && (f.Trust == trustUnconfirmed || f.Trust == trustDisputed) {
+			ex.Unconfirmed++ // not reported until a second source agrees (trust.go)
+			continue
+		}
 		switch f.Status {
 		case "open":
 			open = append(open, f)
@@ -351,6 +356,9 @@ func headline(ex *ExecSummary, days int) string {
 	}
 	fmt.Fprintf(&b, "In %s, %d new finding%s appeared (%d high) and %d %s fixed.", period, ex.NewCount, plural(ex.NewCount), ex.NewHigh, ex.Resolved,
 		map[bool]string{true: "was", false: "were"}[ex.Resolved == 1])
+	if ex.Unconfirmed > 0 {
+		fmt.Fprintf(&b, " %d more finding%s from a single exposure-data source %s left out until a second source confirms %s.", ex.Unconfirmed, map[bool]string{true: "", false: "s"}[ex.Unconfirmed == 1], map[bool]string{true: "is", false: "are"}[ex.Unconfirmed == 1], map[bool]string{true: "it", false: "them"}[ex.Unconfirmed == 1])
+	}
 	if ex.Accepted > 0 {
 		fmt.Fprintf(&b, " %d risk%s knowingly accepted.", ex.Accepted, map[bool]string{true: " is", false: "s are"}[ex.Accepted == 1])
 	}

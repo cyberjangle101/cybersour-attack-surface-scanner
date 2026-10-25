@@ -2,7 +2,7 @@
 
 A lightweight, single-binary agent for continuous **External Attack Surface Management (EASM)**. It runs as a persistent background service on Windows or Linux, watches the internet-facing footprint of the organisations you tell it about, and emails you only when something **changes**.
 
-> **Status:** v1.9.4. See "What's new in 1.9" below.
+> **Status:** v1.9.5. See "What's new in 1.9" below.
 
 ## Why
 
@@ -52,6 +52,11 @@ are emailed only about new subdomains, new IP/DNS records, new certificates and 
 * **Users:** admin, analyst and read-only viewer roles; local accounts with optional two-factor sign-in, or Active Directory sign-in (see *What's new in 1.6*).
 
 ## What's new in 1.9
+
+**v1.9.5:**
+* **Findings from exposure data need two sources.** A finding raised only from Shodan data (open port, CVE list, tags) is marked **Unconfirmed**. It is still listed, but it is not emailed, not sent to channels and not counted in totals or reports. It becomes **Trusted** when a second, independent source agrees: Censys, the agent's own active check, or an analyst. InternetDB and the Shodan API are one dataset, so together they count once. When a scan runs with active checks on, the agent connects to each unconfirmed open port itself. A port that answers becomes trusted and alerts ("Now confirmed by a second source"); one that doesn't is marked **Disputed**. What no connection can prove, such as a CVE or an end-of-life tag, an analyst confirms with *Mark as confirmed*, saying how (audited, and can be removed). The Findings page has a *Corroboration* filter, each finding shows the sources that agree, and the dashboard shows the unconfirmed count separately. Findings from earlier versions are graded when the agent starts.
+* **The console window really closes.** On Windows 11 console programs open in Windows Terminal, which ignored the old "hide window" call, so the window stayed open. After start-up the agent now detaches from its window, which closes it, and keeps running. The log continues in `easm.log` in the data folder, unless a log file is configured.
+* **Notification-area icon and logo.** While the agent runs, its icon sits next to the clock. Click it to open EASM Agent; right-click it to open the log file or stop the agent (with a confirmation). The program, the icon and the browser tab now carry the EASM Agent logo, drawn by `tools/icon` (`go run ./tools/icon` rebuilds the icon resource and favicon).
 
 **v1.9.4:**
 * **Updates restart cleanly.** After *Back up and install* the new version now opens in its own window and asks for the key passphrase there, then carries on in the background. Before, the restarted program could not use its window, so it closed at once and had to be started by hand.

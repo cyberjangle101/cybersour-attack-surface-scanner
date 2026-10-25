@@ -189,7 +189,7 @@ func TestConfirmOpenPortsAfterFirstScan(t *testing.T) {
 	open := insertFinding(t, e, fmt.Sprintf("svc:%s:%d", ip, port), "exposed-service", "ssh.example.test", "SSH (port 22) is reachable", "Shodan InternetDB")
 	far := insertFinding(t, e, "svc:198.51.100.9:3306", "exposed-service", "db.example.test", "MySQL (port 3306) is reachable on db.example.test (198.51.100.9, on a network outside the expected ownership)", "Shodan InternetDB")
 	tg, _ := e.store.GetTarget(1)
-	e.eng.confirmOpenPorts(testCtx(t), tg, false)
+	e.eng.confirmOpenPorts(testCtx(t), tg, false, confirmFirstScan)
 	fs, _ := e.store.ListFindings("example.test", "")
 	for _, f := range fs {
 		switch f.ID {

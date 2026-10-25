@@ -313,9 +313,22 @@ func (s *Scanner) scanTarget(ctx context.Context, t *Target) error {
 		seen[key] = true
 		isNew, err := tx.UpsertFinding(root, key, kind, sev, host, detail, source, now)
 		check(err)
-		if isNew {
+		trust, upgraded := "", false
+		if thirdPartyKinds[kind] && err == nil {
+			trust, upgraded, err = tx.UpdateTrust(key, source)
+			check(err)
+		}
+		switch {
+		case isNew && (trust == trustUnconfirmed || trust == trustDisputed):
+			// Recorded in the change log but not alerted until a second source agrees (trust.go).
+			st.Findings++
+			check(tx.AddEvent(Event{TS: now, Root: root, Kind: kind, Severity: sev, Host: host,
+				Detail: "Unconfirmed, one source only (" + source + "): " + detail, NoAlert: true}, false))
+		case isNew:
 			st.Findings++
 			emit(kind, sev, host, detail, false) // findings are never silenced by baseline mode
+		case upgraded:
+			emit(kind, sev, host, "Now confirmed by a second source ("+source+"): "+detail, false)
 		}
 	}
 

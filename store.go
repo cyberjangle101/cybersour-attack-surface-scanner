@@ -229,6 +229,10 @@ func initStore(db *sql.DB, path string) (*Store, error) {
 			return nil, fmt.Errorf("migrate: %w", err)
 		}
 	}
+	if err := backfillTrust(db); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("migrate: finding trust levels: %w", err)
+	}
 	return &Store{db: db, path: path}, nil
 }
 
@@ -263,6 +267,13 @@ var migrateStmts = []string{
 	`ALTER TABLE users ADD COLUMN recovery TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE users ADD COLUMN last_login TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE users ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0`,
+	// corroboration of third-party findings (trust.go)
+	`ALTER TABLE findings ADD COLUMN trust TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE findings ADD COLUMN trust_sources TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE findings ADD COLUMN trust_src TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE findings ADD COLUMN confirm_by TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE findings ADD COLUMN confirm_at TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE findings ADD COLUMN confirm_note TEXT NOT NULL DEFAULT ''`,
 }
 
 // Close closes the database.
@@ -956,6 +967,8 @@ type Finding struct {
 	ScanSev, SevOverride, SevReason, SevBy string
 	// Last "Confirm via active scan" result.
 	VerifyState, VerifyBanner, VerifyAt, VerifyBy string
+	// Corroboration (trust.go): level, the independent sources behind it, and an analyst's confirmation.
+	Trust, TrustSources, ConfirmBy, ConfirmAt, ConfirmNote string
 }
 
 // ListFindings returns findings for a root ("" = all) filtered by status ("" = all), worst first.
@@ -970,7 +983,7 @@ func (s *Store) ListFindings(root, status string) ([]Finding, error) {
 		where = append(where, "status=?")
 		args = append(args, status)
 	}
-	rows, err := s.db.Query(`SELECT id,key,root,kind,severity,host,detail,status,first_seen,last_seen,source,ack_reason,ack_by,ack_at,ack_until,scan_sev,sev_override,sev_reason,sev_by,verify_state,verify_banner,verify_at,verify_by FROM findings WHERE `+strings.Join(where, " AND "), args...) //nolint:gosec // G202: SQL text is built only from fixed fragments; every value is a bound parameter
+	rows, err := s.db.Query(`SELECT id,key,root,kind,severity,host,detail,status,first_seen,last_seen,source,ack_reason,ack_by,ack_at,ack_until,scan_sev,sev_override,sev_reason,sev_by,verify_state,verify_banner,verify_at,verify_by,trust,trust_sources,confirm_by,confirm_at,confirm_note FROM findings WHERE `+strings.Join(where, " AND "), args...) //nolint:gosec // G202: SQL text is built only from fixed fragments; every value is a bound parameter
 	if err != nil {
 		return nil, err
 	}
@@ -980,7 +993,8 @@ func (s *Store) ListFindings(root, status string) ([]Finding, error) {
 		var f Finding
 		if err := rows.Scan(&f.ID, &f.Key, &f.Root, &f.Kind, &f.Severity, &f.Host, &f.Detail, &f.Status, &f.FirstSeen, &f.LastSeen, &f.Source,
 			&f.AckReason, &f.AckBy, &f.AckAt, &f.AckUntil, &f.ScanSev, &f.SevOverride, &f.SevReason, &f.SevBy,
-			&f.VerifyState, &f.VerifyBanner, &f.VerifyAt, &f.VerifyBy); err != nil {
+			&f.VerifyState, &f.VerifyBanner, &f.VerifyAt, &f.VerifyBy,
+			&f.Trust, &f.TrustSources, &f.ConfirmBy, &f.ConfirmAt, &f.ConfirmNote); err != nil {
 			return nil, err
 		}
 		out = append(out, f)
@@ -1086,6 +1100,7 @@ func (s *Store) ListEvents(f EventFilter) ([]Event, int, error) {
 // Stats holds the dashboard counters.
 type Stats struct {
 	Targets, Enabled, Hosts, OpenFindings, HighFindings, Events24h, PendingEvents, Running int
+	UnconfirmedFindings                                                                  int // open, from one third-party source only: not in OpenFindings
 }
 
 // Stats computes the dashboard counters.
@@ -1101,8 +1116,9 @@ func (s *Store) Stats() (Stats, error) {
 		{`SELECT COUNT(*) FROM targets WHERE enabled=1`, &st.Enabled, nil},
 		{`SELECT COUNT(*) FROM targets WHERE last_status='running'`, &st.Running, nil},
 		{`SELECT COUNT(*) FROM subdomains`, &st.Hosts, nil},
-		{`SELECT COUNT(*) FROM findings WHERE status='open'`, &st.OpenFindings, nil},
-		{`SELECT COUNT(*) FROM findings WHERE status='open' AND severity='high'`, &st.HighFindings, nil},
+		{`SELECT COUNT(*) FROM findings WHERE status='open' AND ` + countedFinding, &st.OpenFindings, nil},
+		{`SELECT COUNT(*) FROM findings WHERE status='open' AND severity='high' AND ` + countedFinding, &st.HighFindings, nil},
+		{`SELECT COUNT(*) FROM findings WHERE status='open' AND NOT ` + countedFinding, &st.UnconfirmedFindings, nil},
 		{`SELECT COUNT(*) FROM events WHERE baseline=0 AND ts>=?`, &st.Events24h, []any{day}},
 		{`SELECT COUNT(*) FROM events WHERE notified=0`, &st.PendingEvents, nil},
 	}
@@ -1135,7 +1151,8 @@ func (s *Store) TargetCounts() (hosts map[string]int, findings map[string]map[st
 	if err != nil {
 		return nil, nil, err
 	}
-	fr, err := s.db.Query(`SELECT root, severity, COUNT(*) FROM findings WHERE status='open' GROUP BY root, severity`)
+	// The trust condition is countedFinding, written out so the query is one fixed string.
+	fr, err := s.db.Query(`SELECT root, severity, COUNT(*) FROM findings WHERE status='open' AND trust NOT IN ('unconfirmed','disputed') GROUP BY root, severity`)
 	if err != nil {
 		return nil, nil, err
 	}

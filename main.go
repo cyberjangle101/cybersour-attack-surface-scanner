@@ -41,6 +41,7 @@ type program struct {
 	web      *Server
 	stopOnce sync.Once
 	lock     *DataLock // held from start to stop: one agent per data folder
+	trayStop func()    // removes the notification-area icon (nil when there is none)
 }
 
 // Start opens the key and the encrypted database, starts the scheduler and the web server, and returns once they are running.
@@ -153,9 +154,10 @@ func (p *program) Start(service.Service) error {
 }
 
 // desktopStart finishes an interactive start: it opens the web interface in the
-// default browser and, when the program has a console window of its own (it was
-// double-clicked on Windows), hides that window so the agent keeps running in the
-// background. Stop it from System health → Stop agent, or run it as a service.
+// default browser, puts the agent's icon in the notification area (Windows) and,
+// when the program has a console window of its own (it was double-clicked),
+// closes that window so the agent keeps running in the background. Stop it from
+// the icon, from System health → Stop agent, or run it as a service.
 func (p *program) desktopStart(link string) {
 	fmt.Printf("\nEASM Agent %s is running at %s\n", version, link)
 	if !p.boot.NoBrowser {
@@ -164,18 +166,43 @@ func (p *program) desktopStart(link string) {
 			p.log.Info("browser not opened", "reason", err)
 		}
 	}
-	if p.boot.KeepConsole || !ownsConsole() {
+	leave := !p.boot.KeepConsole && ownsConsole()
+	fallbackLog := filepath.Join(p.boot.DataDir, "easm.log")
+	p.trayStop = startTray(trayOptions{
+		Tip:     fmt.Sprintf("EASM Agent %s - %s", version, link),
+		Notice:  "EASM Agent is running in the background. Click this icon to open it, or right-click it to stop the agent.",
+		Open:    func() { _ = openBrowser(link) },
+		Stop:    p.stopInteractive,
+		LogFile: func() string { return p.logFile(fallbackLog) },
+	}, p.log)
+	if !leave {
 		fmt.Print("Press Ctrl-C to stop.\n\n")
 		return
 	}
-	fmt.Print("This window will now hide; the agent keeps running in the background.\n" +
-		"To stop it, sign in as an administrator and use System health → Stop agent.\n\n")
+	where := "To stop it, sign in as an administrator and use System health → Stop agent."
+	if p.trayStop != nil {
+		where = "Its icon is in the notification area next to the clock: click it to open EASM Agent,\nor right-click it to stop the agent."
+	}
+	fmt.Printf("This window closes in a few seconds; the agent keeps running in the background.\n%s\nLog file: %s\n\n", where, p.logFile(fallbackLog))
 	go func() {
-		time.Sleep(3 * time.Second) // long enough to read the message
-		if hideConsole() {
-			p.log.Info("console hidden; the agent runs in the background")
+		time.Sleep(4 * time.Second) // long enough to read the message
+		file, err := logOut.leaveConsole(fallbackLog)
+		if err != nil {
+			p.log.Warn("cannot open a log file; the window stays open so the log is not lost", "err", err)
+			return
+		}
+		if leaveConsole() {
+			p.log.Info("console closed; the agent runs in the background", "log", file)
 		}
 	}()
+}
+
+// logFile is the file the log is written to once the console has gone: the configured one, or fallback.
+func (p *program) logFile(fallback string) string {
+	if p.boot.Logging.File != "" {
+		return p.boot.Logging.File
+	}
+	return fallback
 }
 
 // stopInteractive shuts the agent down from the web interface (interactive runs
@@ -295,6 +322,9 @@ func displayAddr(a string) string {
 // Stop shuts the web server and scheduler down gracefully and closes the database.
 func (p *program) Stop(service.Service) error {
 	p.log.Info("agent stopping")
+	if p.trayStop != nil {
+		p.trayStop()
+	}
 	p.cancel()
 	sctx, scancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer scancel()
@@ -438,7 +468,7 @@ func main() {
 		resetPW   = flag.String("reset-password", "", "set a new password for the named user, then exit")
 		noPass    = flag.Bool("no-passphrase", false, "first start only: create the encryption key without a passphrase (not recommended)")
 		noBrowser = flag.Bool("no-browser", false, "do not open the web interface in the browser at start-up")
-		keepCon   = flag.Bool("keep-console", false, "Windows: keep the console window visible instead of hiding it after start-up")
+		keepCon   = flag.Bool("keep-console", false, "Windows: keep the console window open instead of closing it after start-up")
 		plainHTTP = flag.Bool("plain-http", false, "serve unencrypted HTTP instead of HTTPS with an automatic self-signed certificate")
 		restore   = flag.String("restore", "", "restore a backup .zip into the data folder (stop the agent first), then exit")
 		force     = flag.Bool("force", false, "with -restore: replace an existing database (the old one is kept alongside)")
