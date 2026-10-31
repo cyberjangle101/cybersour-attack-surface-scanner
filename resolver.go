@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -17,6 +21,8 @@ import (
 // real RCODEs and CNAME targets, which dangling-CNAME detection depends on.
 type Resolver struct {
 	addrs   []string
+	doh     []string     // DNS-over-HTTPS fallbacks, tried when a resolver cannot be reached (port 53 blocked)
+	hc      *http.Client // for DNS-over-HTTPS
 	timeout time.Duration
 	retries int
 	tokens  chan struct{}
@@ -48,7 +54,10 @@ type HostResult struct {
 
 // NewResolver creates a rate-limited resolver that round-robins across the configured servers.
 func NewResolver(ctx context.Context, cfg DNSCfg) *Resolver {
-	r := &Resolver{addrs: cfg.Resolvers, timeout: cfg.Timeout, retries: cfg.Retries, tokens: make(chan struct{}, 1)}
+	r := &Resolver{addrs: cfg.Resolvers, doh: cfg.DoHFallback, timeout: cfg.Timeout, retries: cfg.Retries, tokens: make(chan struct{}, 1),
+		hc: &http.Client{Timeout: cfg.Timeout + 2*time.Second, Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12}, ForceAttemptHTTP2: true, MaxIdleConnsPerHost: 4,
+		}}}
 	interval := time.Second / time.Duration(cfg.QPS)
 	if interval <= 0 {
 		interval = time.Microsecond
@@ -80,8 +89,12 @@ func (r *Resolver) wait(ctx context.Context) error {
 	}
 }
 
-// exchange sends one DNS query to one server, retrying over TCP when the UDP answer is truncated.
+// exchange sends one DNS query to one server, retrying over TCP when the UDP answer is
+// truncated. A server given as an https:// URL is asked over DNS-over-HTTPS instead.
 func (r *Resolver) exchange(ctx context.Context, m *dns.Msg, addr string) (*dns.Msg, error) {
+	if strings.HasPrefix(addr, "https://") {
+		return r.dohExchange(ctx, m, addr)
+	}
 	c := &dns.Client{Net: "udp", Timeout: r.timeout}
 	in, _, err := c.ExchangeContext(ctx, m, addr)
 	if err == nil && in.Truncated {
@@ -108,13 +121,26 @@ func (r *Resolver) query(ctx context.Context, name string, qtype uint16) (*dns.M
 		m.RecursionDesired = true
 		t0 := time.Now()
 		in, err := r.exchange(ctx, m, addr)
+		if err != nil && ctx.Err() == nil {
+			r.health.Record("dns:"+addr, r.viaOr(), false, time.Since(t0), err)
+			if len(r.doh) > 0 && !strings.HasPrefix(addr, "https://") {
+				// The resolver could not be reached (often: outbound port 53 is blocked on
+				// servers). Ask the same question over HTTPS, which keeps the real RCODE
+				// and CNAME answers that takeover detection needs.
+				addr = r.doh[(r.next.Load())%uint64(len(r.doh))]
+				t0 = time.Now()
+				in, err = r.exchange(ctx, m, addr)
+				if err != nil {
+					r.health.Record("dns:"+addr, r.viaOr(), false, time.Since(t0), err)
+				}
+			}
+		}
 		if err != nil {
 			last = err
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
 			}
 			r.failStreak.Add(1)
-			r.health.Record("dns:"+addr, r.viaOr(), false, time.Since(t0), err)
 			continue
 		}
 		r.okAnswers.Add(1)
@@ -128,6 +154,48 @@ func (r *Resolver) query(ctx context.Context, name string, qtype uint16) (*dns.M
 		}
 	}
 	return nil, last
+}
+
+// dohMaxAnswer caps a DNS-over-HTTPS answer (a DNS message is at most 64 KiB).
+const dohMaxAnswer = 65535
+
+// dohExchange asks one DNS-over-HTTPS server (RFC 8484, binary DNS message over POST).
+func (r *Resolver) dohExchange(ctx context.Context, m *dns.Msg, endpoint string) (*dns.Msg, error) {
+	q := m.Copy()
+	q.Id = 0 // RFC 8484: ID 0 lets caches share answers
+	packed, err := q.Pack()
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := context.WithTimeout(ctx, r.timeout+2*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(cctx, http.MethodPost, endpoint, bytes.NewReader(packed))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/dns-message")
+	req.Header.Set("Accept", "application/dns-message")
+	resp, err := r.hc.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("DNS-over-HTTPS: HTTP %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, dohMaxAnswer+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(body) > dohMaxAnswer {
+		return nil, errors.New("DNS-over-HTTPS: answer too large")
+	}
+	in := new(dns.Msg)
+	if err := in.Unpack(body); err != nil {
+		return nil, fmt.Errorf("DNS-over-HTTPS: unreadable answer: %w", err)
+	}
+	in.Id = m.Id
+	return in, nil
 }
 
 func cleanName(s string) string {

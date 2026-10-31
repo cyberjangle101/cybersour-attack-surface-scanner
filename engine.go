@@ -22,6 +22,7 @@ type Engine struct {
 	log     *slog.Logger
 	wake    chan struct{}
 	health  *HealthBoard
+	feeds   *Feeds // bulk reference feeds, shared by every scan
 	started time.Time
 
 	// intelURLs is a test seam that redirects the exposure-intelligence services.
@@ -70,6 +71,7 @@ func NewEngine(store *Store, vault *Vault, log *slog.Logger) *Engine {
 	if v, ok, _ := store.getMeta("health"); ok {
 		e.health.Load(v)
 	}
+	e.feeds = NewFeeds(store, log, e.health)
 	e.newScanner = func(cfg *Config, res *Resolver) *Scanner { return NewScanner(cfg, log, store, res) }
 	return e
 }
@@ -309,6 +311,7 @@ func (e *Engine) scan(ctx context.Context, t *Target) {
 	res := NewResolver(tctx, cfg.DNS)
 	sc := e.newScanner(cfg, res)
 	sc.SetHealth(e.health)
+	sc.feeds = e.feeds
 	sc.SetProgress(func(stage string, pct int, detail string) { e.progress.Update(t.ID, stage, pct, detail) })
 	sc.onActive = func() { e.progress.MarkActive(t.ID) }
 

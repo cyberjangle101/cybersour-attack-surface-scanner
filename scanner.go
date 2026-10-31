@@ -23,6 +23,7 @@ type Scanner struct {
 	mailer *Mailer
 	enr    *Enricher
 	health *HealthBoard
+	feeds  *Feeds // bulk reference feeds (nil: not used)
 
 	prober    *Prober // nil = the default (safe) prober; tests substitute one
 	force     bool    // this scan ignores cached exposure intelligence
@@ -182,6 +183,11 @@ func (s *Scanner) scanTarget(ctx context.Context, t *Target) error {
 		return fmt.Errorf("baseline lookup: %w", err)
 	}
 	log.Info("scan started", "baseline_mode", !baselined)
+
+	if names := s.enabledFeeds(); len(names) > 0 {
+		s.prog("Updating reference feeds", 1, strings.Join(names, ", "))
+		s.feeds.Refresh(ctx, names...)
+	}
 
 	// 1. Passive discovery
 	s.prog("Discovering subdomains", 2, "contacting passive sources")
@@ -435,7 +441,11 @@ func (s *Scanner) scanTarget(ctx context.Context, t *Target) error {
 			detail := fmt.Sprintf("%s has a published CNAME record pointing to %s, but %s does not exist (NXDOMAIN). "+
 				"Tools like nslookup also report NXDOMAIN for %s itself because they follow the alias to the missing target; "+
 				"the alias record is real and still published", h, hr.Dangling, hr.Dangling, h)
-			if p := takeoverProvider(hr.Dangling); p != "" {
+			p := takeoverProvider(hr.Dangling)
+			if tp, ok := s.feeds.TakeoverFor(hr.Dangling); p == "" && ok && tp.NXDomain && s.cfg.Intel.Takeover {
+				p = tp.Service + " (per can-i-take-over-xyz)"
+			}
+			if p != "" {
 				sev = "high"
 				detail += fmt.Sprintf(". The target is on %q, a platform where anyone can claim an unused name, so this is a takeover risk", p)
 			} else {

@@ -59,6 +59,10 @@ func (s *Server) healthRows2(labels map[string]string) ([]healthGroup, map[strin
 			for _, r := range st.DNSResolvers {
 				conns = append(conns, Connector{ID: "dns:" + r, Group: c.Group, Label: "DNS resolver", What: r, Enabled: true, Probe: c.Probe})
 			}
+			for _, r := range dohFallbacks {
+				conns = append(conns, Connector{ID: "dns:" + r, Group: c.Group, Label: "DNS-over-HTTPS fallback", What: r, Enabled: st.DNSOverHTTPS,
+					Probe: "Used only when a resolver above cannot be reached; Check now asks it for example.com"})
+			}
 			continue
 		}
 		conns = append(conns, c)

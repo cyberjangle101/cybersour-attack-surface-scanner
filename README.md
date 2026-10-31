@@ -2,7 +2,7 @@
 
 A lightweight, single-binary agent for continuous **External Attack Surface Management (EASM)**. It runs as a persistent background service on Windows or Linux, watches the internet-facing footprint of the organisations you tell it about, and emails you only when something **changes**.
 
-> **Status:** v1.9.7. See "What's new in 1.9" below. Every check the agent runs is listed in [docs/RULES.md](docs/RULES.md).
+> **Status:** v1.9.8. See "What's new in 1.9" below. Every check the agent runs is listed in [docs/RULES.md](docs/RULES.md).
 
 ## Why
 
@@ -42,7 +42,7 @@ are emailed only about new subdomains, new IP/DNS records, new certificates and 
 
 ## What it does
 
-* **Discovery (free):** crt.sh (retry/backoff) and HackerTarget need no key; AlienVault OTX needs a free API key. Anubis is still listed but off, because its service now blocks automated clients.
+* **Discovery (free):** crt.sh (retry/backoff), CertSpotter, HackerTarget and urlscan.io need no key; the Wayback Machine is available but off (slow). AlienVault OTX needs a free API key. Anubis is still listed but off, because its service now blocks automated clients. Every source is listed in [docs/RULES.md](docs/RULES.md#data-sources).
 * **Resolution:** A/AAAA/CNAME/NS/MX/TXT via 1.1.1.1 and 8.8.8.8, bounded workers and a global QPS cap, wildcard-DNS detection.
 * **Ownership:** Team Cymru DNS WHOIS (RIPEstat fallback) maps IPs to ASN/organisation; addresses outside your expected ASNs/keywords raise a HIGH finding.
 * **Exposure intelligence:** open ports, CVEs and risk tags per IP, and domain expiry (see below).
@@ -53,6 +53,32 @@ are emailed only about new subdomains, new IP/DNS records, new certificates and 
 
 ## What's new in 1.9
 
+**v1.9.8 (more free sources, for redundancy and accuracy):**
+
+Each source below was checked against the live service before being added. All need no key, all can be switched off in Settings, and all show on System health.
+
+* **Redundancy:**
+  * **CertSpotter** is a second Certificate Transparency source. A scan now counts as complete when crt.sh *or* CertSpotter answered, so a crt.sh outage no longer leaves a domain's baseline unfinished.
+  * **urlscan.io** adds names seen in public scans, including hosts that never had a certificate. The **Wayback Machine** (archived URLs) is available too, but off by default because it is slow.
+  * **DNS-over-HTTPS fallback** (Google, Cloudflare): when a resolver cannot be reached, for example on a server whose network blocks outbound port 53, the same question is asked over HTTPS. The real DNS answer and error codes are kept, so takeover detection still works.
+* **Accuracy:**
+  * **Cloud and CDN IP ranges** (AWS, Google Cloud, Cloudflare, Fastly, Oracle Cloud, GitHub): open ports on a CDN edge that Shodan did not tag are no longer reported, and findings name the hosting provider ("hosted on AWS (EC2, eu-west-2)").
+  * **SANS Internet Storm Center** gives an independent second opinion on malicious addresses: reports of the address attacking DShield sensors, or listings on compromised-host feeds. When it agrees with Shodan's tags, the "address flagged" finding becomes *Trusted* without a manual check.
+  * **CISA KEV and FIRST EPSS** rank vulnerability findings. CVEs exploited in the wild (and those used by ransomware) come first, then the most likely to be exploited. Any KEV CVE, or an EPSS of 50% or more, makes the finding High.
+  * **Subdomain takeover fingerprints** (can-i-take-over-xyz): a dangling CNAME to a service the community lists as claimable is High. A new rule, **EASM-DNS-007**, catches names that still resolve but show the service's "nothing here" page; this needs active checks.
+* **New finding: Tor exit node** (EASM-EXP-005), when one of your addresses is on the Tor Project's exit list.
+* **How downloads are handled:** bulk lists are downloaded at most daily (Tor every 6 hours, slow-changing ones weekly). Each is checked before use, kept in the encrypted database, and the last good copy stays in use when a download fails.
+* **Not added, and why:**
+  * URLhaus and ThreatFox now require an Auth-Key (HTTP 401).
+  * BGPView has shut down.
+  * ThreatMiner was unreachable (HTTP 522).
+  * AnubisDB still blocks automated clients.
+  * RapidDNS only offers an HTML page to scrape.
+  * Quad9's DNS-over-HTTPS endpoint timed out.
+  * ip-api.com's and ipwho.is's free tiers do not allow this use.
+  * SSL Labs duplicates the agent's own TLS checks at 25 assessments a day.
+  * Common Crawl overlaps the Wayback Machine at a much higher cost.
+  * NVD, CIRCL and OSV add nothing to the NVD link already on every CVE.
 **v1.9.7 (rules reference and new checks):**
 * **[docs/RULES.md](docs/RULES.md) lists every rule** with a stable ID (`EASM-WEB-001` and so on), its trigger, severity, how the evidence is collected, why it matters and what to do, plus every path, product, port, platform and signature the rules use. It is generated from the code, and a test fails if the two disagree.
 * **Login portals and admin consoles (EASM-WEB-001):**

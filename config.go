@@ -180,6 +180,12 @@ type Toggle struct{ Enabled bool }
 type IntelCfg struct {
 	InternetDB bool
 	RDAP       bool
+	ISC        bool // SANS Internet Storm Center: addresses reported attacking its sensors
+	EPSS       bool // FIRST exploit-prediction scores for CVEs
+	KEV        bool // CISA Known Exploited Vulnerabilities catalogue
+	TorExits   bool // Tor Project exit-node list
+	Cloud      bool // cloud and CDN providers' published IP ranges
+	Takeover   bool // can-i-take-over-xyz subdomain-takeover fingerprints
 
 	Shodan struct {
 		Enabled      bool
@@ -245,17 +251,21 @@ type SourcesCfg struct {
 		Enabled bool
 		Key     string
 	}
-	Anubis    Toggle
-	UserAgent    string
+	Anubis      Toggle
+	CertSpotter Toggle // a second Certificate Transparency search
+	URLScan     Toggle // names seen in public urlscan.io scans
+	Wayback     Toggle // names in Wayback Machine archived URLs
+	UserAgent   string
 }
 
 // DNSCfg configures the DNS resolver pool: servers, concurrency, rate limit, timeout and retries.
 type DNSCfg struct {
-	Resolvers []string
-	Workers   int
-	QPS       int
-	Timeout   time.Duration
-	Retries   int
+	Resolvers   []string
+	DoHFallback []string // DNS-over-HTTPS endpoints used when a resolver cannot be reached
+	Workers     int
+	QPS         int
+	Timeout     time.Duration
+	Retries     int
 }
 
 // ASNCfg configures IP-to-network ownership lookups.

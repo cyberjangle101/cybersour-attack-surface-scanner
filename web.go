@@ -117,12 +117,12 @@ func NewServer(store *Store, eng *Engine, log *slog.Logger, boot *Bootstrap) (*S
 		"verifyLabel": verifyLabel,
 		"trustLabel":  trustLabel,
 		"thirdParty":  func(kind string) bool { return thirdPartyKinds[kind] },
-		"add":    func(a, b int) int { return a + b },
-		"sub":    func(a, b int) int { return a - b },
-		"join":   strings.Join,
-		"lines":  func(in []string) string { return strings.Join(in, "\n") },
-		"asns":   joinInts,
-		"hasKey": func(m map[string]int, k string) int { return m[k] },
+		"add":         func(a, b int) int { return a + b },
+		"sub":         func(a, b int) int { return a - b },
+		"join":        strings.Join,
+		"lines":       func(in []string) string { return strings.Join(in, "\n") },
+		"asns":        joinInts,
+		"hasKey":      func(m map[string]int, k string) int { return m[k] },
 		// href builds a link from a path and an already-encoded query. html/template would
 		// otherwise percent-encode the "=" and "&" inside a query placed after "?". The result is
 		// a plain string so html/template still normalizes it and checks the scheme.
@@ -1516,6 +1516,9 @@ func parseSettingsForm(r *http.Request, cur Settings) (Settings, error) {
 	s.ASNEnabled, s.ASNBGPViewFallback = on("asn_enabled"), on("asn_bgpview_fallback")
 	s.SMTPEnabled, s.SMTPInsecureSkipVerify = on("smtp_enabled"), on("smtp_insecure_skip_verify")
 	s.InternetDBEnabled, s.RDAPEnabled = on("internetdb_enabled"), on("rdap_enabled")
+	s.CertSpotterEnabled, s.URLScanEnabled, s.WaybackEnabled = on("certspotter_enabled"), on("urlscan_enabled"), on("wayback_enabled")
+	s.DNSOverHTTPS, s.ISCEnabled, s.EPSSEnabled, s.KEVEnabled = on("dns_over_https"), on("isc_enabled"), on("epss_enabled"), on("kev_enabled")
+	s.TorExitEnabled, s.CloudRangesEnabled, s.TakeoverFeedEnabled = on("tor_exit_enabled"), on("cloud_ranges_enabled"), on("takeover_feed_enabled")
 	s.ShodanEnabled, s.ShodanDomainLookup = on("shodan_enabled"), on("shodan_domain_lookup")
 	s.CensysEnabled, s.CensysOrgID, s.VirusTotalEnabled = on("censys_enabled"), str("censys_org_id"), on("virustotal_enabled")
 	s.HIBPEnabled, s.GitHubEnabled = on("hibp_enabled"), on("github_enabled")

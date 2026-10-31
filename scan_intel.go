@@ -12,14 +12,16 @@ import (
 
 // intelData is everything the optional enrichment step learned during one scan.
 type intelData struct {
-	active   []string // per-IP sources that are enabled
-	ips      []string // public, non-wildcard addresses of this entity
-	hostsBy  map[string][]string
-	res      *IPResult
-	skipped  int
-	domain   *DomainInfo // fresh or cached registration data (nil = unknown)
-	domainOK bool        // the registration data is current
-	enabled  bool
+	active    []string // per-IP sources that are enabled
+	ips       []string // public, non-wildcard addresses of this entity
+	hostsBy   map[string][]string
+	res       *IPResult
+	skipped   int
+	domain    *DomainInfo // fresh or cached registration data (nil = unknown)
+	domainOK  bool        // the registration data is current
+	enabled   bool
+	epss      map[string]float64 // CVE -> FIRST EPSS probability, for the CVEs seen in this scan
+	torLoaded bool               // a current Tor exit list was in use for this scan
 }
 
 // reliableFor says whether a finding of this kind can be auto-resolved: only when this
@@ -30,6 +32,9 @@ func (d *intelData) reliableFor(kind, key string, dnsClean bool) bool {
 	}
 	if kind == "domain-expiry" {
 		return d.domainOK
+	}
+	if kind == "tor-exit" {
+		return d.torLoaded // a current exit list was checked this scan
 	}
 	if len(d.active) == 0 {
 		return false
@@ -72,7 +77,11 @@ func (s *Scanner) gatherIntel(ctx context.Context, t *Target, hosts []string, re
 	in := s.cfg.Intel
 	d := &intelData{hostsBy: map[string][]string{}}
 	d.active = s.enr.IPSources()
-	d.enabled = len(d.active) > 0 || in.RDAP
+	if in.TorExits {
+		at := s.feeds.Loaded(feedTor)
+		d.torLoaded = !at.IsZero() && time.Since(at) < 2*feedRefresh[feedTor]
+	}
+	d.enabled = len(d.active) > 0 || in.RDAP || d.torLoaded
 	if !d.enabled {
 		return d
 	}
@@ -106,6 +115,20 @@ func (s *Scanner) gatherIntel(ctx context.Context, t *Target, hosts []string, re
 		}
 		d.res = s.enr.LookupIPs(ctx, d.ips, cached)
 		d.skipped = d.res.Skipped
+		if in.EPSS {
+			var cves []string
+			for _, bySrc := range d.res.Intel {
+				for _, x := range bySrc {
+					cves = append(cves, x.Vulns...)
+				}
+			}
+			if len(cves) > 0 {
+				var err error
+				if d.epss, err = s.enr.EPSS(ctx, cves); err != nil {
+					s.log.Warn("EPSS scores unavailable for part of this scan", "err", err)
+				}
+			}
+		}
 		if d.skipped > 0 {
 			s.log.Warn("IP lookups capped for this scan; the rest will be covered on later scans", "skipped", d.skipped, "cap", in.MaxIPs)
 		}
@@ -243,8 +266,25 @@ func (s *Scanner) applyIntel(tx *Tx, t *Target, d *intelData, asns map[string]*A
 		vulns = dedupe(vulns)
 		sort.Strings(vulns)
 
-		// Third-party or CDN edge addresses are not this entity's responsibility.
-		if hasTag(tags, "cdn") {
+		// Independent "this address is malicious" signals, by source family.
+		flagBy, iscNote := map[string]bool{}, ""
+		for _, src := range sortedKeys(bySrc) {
+			switch in := bySrc[src]; {
+			case (src == "internetdb" || src == "shodan") && hasTag(in.Tags, "compromised", "malware", "doublepulsar"):
+				flagBy["Shodan tags"] = true
+			case src == "isc" && hasTag(in.Tags, "isc-attacker"):
+				flagBy["SANS ISC"], iscNote = true, iscSummary(in.Tags)
+			}
+		}
+
+		// Third-party or CDN edge addresses are not this entity's responsibility: Shodan's
+		// tag, or the address lies in a CDN's published ranges (Cloudflare, Fastly,
+		// CloudFront, GitHub Pages), which catches the edges Shodan does not tag.
+		cloud, inCloud := CloudRange{}, false
+		if s.cfg.Intel.Cloud {
+			cloud, inCloud = s.feeds.Cloud(ip)
+		}
+		if hasTag(tags, "cdn") || (inCloud && cloud.CDN) {
 			continue
 		}
 		// An address outside the expected ownership is still reported: a name under this
@@ -259,9 +299,16 @@ func (s *Scanner) applyIntel(tx *Tx, t *Target, d *intelData, asns map[string]*A
 			sort.Strings(hs)
 			host = hs[0]
 		}
+		if inCloud {
+			foreign += ", hosted on " + cloudLabel(cloud)
+		}
 		where := fmt.Sprintf("%s (%s%s)", host, ip, foreign)
 		if host == ip {
 			where = ip + foreign
+		}
+		if s.cfg.Intel.TorExits && s.feeds.TorExit(ip) {
+			raise("tor:"+ip, "tor-exit", "medium", host, fmt.Sprintf("%s is a Tor exit node: traffic from anyone using Tor leaves the internet from this address, "+
+				"so abuse reports and blocklists will name it.", where), "Tor Project exit list")
 		}
 
 		for _, p := range sortedIntKeys(ports) {
@@ -281,24 +328,18 @@ func (s *Scanner) applyIntel(tx *Tx, t *Target, d *intelData, asns map[string]*A
 				fmt.Sprintf("%s (port %d) is reachable from the internet on %s%s", name, p, where, prod), strings.Join(dedupe(ports[p]), ", "))
 		}
 		if len(vulns) > 0 {
-			sev := "medium"
-			if len(vulns) >= 10 {
-				sev = "high"
-			}
-			shown := vulns
-			if len(shown) > 12 {
-				shown = shown[:12]
-			}
-			more := ""
-			if len(vulns) > len(shown) {
-				more = fmt.Sprintf(" and %d more", len(vulns)-len(shown))
-			}
-			raise("vuln:"+ip, "known-vuln", sev, host,
-				fmt.Sprintf("%d possible vulnerabilities on %s: %s%s", len(vulns), where, strings.Join(shown, ", "), more), strings.Join(sortedKeys(vsrc), ", "))
+			sev, msg := s.describeVulns(vulns, where, d.epss)
+			raise("vuln:"+ip, "known-vuln", sev, host, msg, strings.Join(sortedKeys(vsrc), ", "))
 		}
-		if hasTag(tags, "compromised", "malware", "doublepulsar") {
-			raise("flag:"+ip, "ip-flagged", "high", host,
-				fmt.Sprintf("%s is tagged %s by exposure-intelligence data", where, strings.Join(dedupe(filterTags(tags, "compromised", "malware", "doublepulsar")), ", ")), "Shodan tags")
+		if len(flagBy) > 0 {
+			var why []string
+			if flagBy["Shodan tags"] {
+				why = append(why, "is tagged "+strings.Join(dedupe(filterTags(tags, "compromised", "malware", "doublepulsar")), ", ")+" by exposure-intelligence data")
+			}
+			if flagBy["SANS ISC"] {
+				why = append(why, "appears in attack reports: "+iscNote)
+			}
+			raise("flag:"+ip, "ip-flagged", "high", host, where+" "+strings.Join(why, "; and "), strings.Join(sortedKeys(flagBy), ", "))
 		}
 		if eol := eolTags(tags); len(eol) > 0 {
 			var parts []string

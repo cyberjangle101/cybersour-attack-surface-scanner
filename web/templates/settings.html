@@ -105,10 +105,13 @@
       <label>OTX API key <input type="password" name="otx_key" autocomplete="new-password" placeholder="{{if .HasOTX}}(saved; leave blank to keep){{else}}(not set){{end}}"></label>
       <label class="check"><input type="checkbox" name="otx_key_clear"> Remove the saved OTX key</label>
       <label class="check"><input type="checkbox" name="anubis_enabled" {{if .S.AnubisEnabled}}checked{{end}}> Anubis subdomain dataset <span class="hint">Currently unusable: jonlu.ca answers automated clients with a Cloudflare bot challenge.</span></label>
+      <label class="check"><input type="checkbox" name="certspotter_enabled" {{if .S.CertSpotterEnabled}}checked{{end}}> CertSpotter <span class="hint">Free, no key (100 requests an hour). A second Certificate Transparency search, so a scan is still complete when crt.sh is down.</span></label>
+      <label class="check"><input type="checkbox" name="urlscan_enabled" {{if .S.URLScanEnabled}}checked{{end}}> urlscan.io <span class="hint">Free, no key. Names seen in public scans, including hosts that never had a certificate.</span></label>
+      <label class="check"><input type="checkbox" name="wayback_enabled" {{if .S.WaybackEnabled}}checked{{end}}> Wayback Machine <span class="hint">Free, no key. Names in archived URLs, which surfaces forgotten hosts. Slow, and often times out for large domains.</span></label>
       <label>crt.sh timeout per attempt (seconds) <input name="crtsh_timeout_seconds" inputmode="numeric" value="{{.S.CrtShTimeoutSeconds}}"></label>
       <label>crt.sh attempts (with exponential backoff) <input name="crtsh_max_attempts" inputmode="numeric" value="{{.S.CrtShMaxAttempts}}"></label>
     </div>
-    <p class="muted small">Without crt.sh, a domain's baseline is never marked complete, because crt.sh is the most complete source.</p>
+    <p class="muted small">A domain's baseline is marked complete only when a Certificate Transparency source (crt.sh or CertSpotter) answered, because those are the most complete record of names.</p>
   </section>
 
   <section class="card" id="intel">
@@ -117,6 +120,12 @@
     <div class="grid">
       <label class="check"><input type="checkbox" name="internetdb_enabled" {{if .S.InternetDBEnabled}}checked{{end}}> Shodan InternetDB <span class="hint">Free, no key. Open ports, CVEs and tags per IP, refreshed weekly.</span></label>
       <label class="check"><input type="checkbox" name="rdap_enabled" {{if .S.RDAPEnabled}}checked{{end}}> RDAP domain registration <span class="hint">Free, no key. Registrar and expiry date; raises a finding when a domain is close to expiring.</span></label>
+      <label class="check"><input type="checkbox" name="isc_enabled" {{if .S.ISCEnabled}}checked{{end}}> SANS Internet Storm Center <span class="hint">Free, no key. Whether an address has been reported attacking DShield sensors: an independent second opinion on addresses flagged as malicious.</span></label>
+      <label class="check"><input type="checkbox" name="epss_enabled" {{if .S.EPSSEnabled}}checked{{end}}> FIRST EPSS <span class="hint">Free, no key; receives CVE identifiers only. The chance each CVE is exploited in the next 30 days, used to rank and grade vulnerability findings.</span></label>
+      <label class="check"><input type="checkbox" name="kev_enabled" {{if .S.KEVEnabled}}checked{{end}}> CISA Known Exploited Vulnerabilities <span class="hint">A daily download; nothing is sent. CVEs exploited in the wild make a vulnerability finding High.</span></label>
+      <label class="check"><input type="checkbox" name="tor_exit_enabled" {{if .S.TorExitEnabled}}checked{{end}}> Tor exit-node list <span class="hint">A download from the Tor Project; nothing is sent. Raises a finding when one of your addresses is a Tor exit.</span></label>
+      <label class="check"><input type="checkbox" name="cloud_ranges_enabled" {{if .S.CloudRangesEnabled}}checked{{end}}> Cloud and CDN IP ranges <span class="hint">Downloads from AWS, Google Cloud, Cloudflare, Fastly, Oracle and GitHub; nothing is sent. Names the hosting provider and skips CDN edges that Shodan does not tag, avoiding false open-port findings.</span></label>
+      <label class="check"><input type="checkbox" name="takeover_feed_enabled" {{if .S.TakeoverFeedEnabled}}checked{{end}}> Subdomain-takeover fingerprints <span class="hint">A weekly download of the community can-i-take-over-xyz list; nothing is sent. Finds names pointing at unclaimed services.</span></label>
       <label>Maximum IPs looked up per scan <input name="enrich_max_ips" inputmode="numeric" value="{{.S.EnrichMaxIPs}}"><span class="hint">Applies to each source. Answers are cached for 24 hours, so large estates are covered over several scans.</span></label>
     </div>
 
@@ -180,6 +189,7 @@
         <label>Query timeout (seconds) <input name="dns_timeout_seconds" inputmode="numeric" value="{{.S.DNSTimeoutSeconds}}"></label>
         <label>Retries <input name="dns_retries" inputmode="numeric" value="{{.S.DNSRetries}}"></label>
       </div>
+      <label class="check"><input type="checkbox" name="dns_over_https" {{if .S.DNSOverHTTPS}}checked{{end}}> Fall back to DNS-over-HTTPS (Google, Cloudflare) <span class="hint">When a resolver cannot be reached, for example because the network blocks outbound DNS on port 53, the same question is asked over HTTPS.</span></label>
       <label class="check"><input type="checkbox" name="asn_enabled" {{if .S.ASNEnabled}}checked{{end}}> Map addresses to ASN / organisation (Team Cymru DNS)</label>
       <label class="check"><input type="checkbox" name="asn_bgpview_fallback" {{if .S.ASNBGPViewFallback}}checked{{end}}> Fall back to RIPEstat if Team Cymru fails</label>
     </div>

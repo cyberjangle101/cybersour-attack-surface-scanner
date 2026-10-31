@@ -47,7 +47,7 @@ type DomainInfo struct {
 }
 
 // intelURLs holds the base URLs of the exposure-intelligence services (overridable in tests).
-type intelURLs struct{ internetdb, shodan, censys, virustotal, rdap, hibp, github, reverseip string }
+type intelURLs struct{ internetdb, shodan, censys, virustotal, rdap, hibp, github, reverseip, isc, epss string }
 
 // Enricher queries optional exposure-intelligence services. It never touches your
 // own infrastructure; it asks third parties what they already know about an IP.
@@ -78,6 +78,8 @@ func NewEnricher(cfg IntelCfg, log *slog.Logger, ua string) *Enricher {
 			hibp:       "https://haveibeenpwned.com/api/v3/",
 			github:     "https://api.github.com/",
 			reverseip:  "https://api.hackertarget.com/reverseiplookup/",
+			isc:        "https://isc.sans.edu/api/ip/",
+			epss:       "https://api.first.org/data/v1/epss",
 		}}
 }
 
@@ -92,6 +94,9 @@ func (e *Enricher) IPSources() []string {
 	}
 	if e.cfg.Censys.Enabled {
 		s = append(s, "censys")
+	}
+	if e.cfg.ISC {
+		s = append(s, "isc")
 	}
 	return s
 }
@@ -351,6 +356,8 @@ func (e *Enricher) LookupIPs(ctx context.Context, ips []string, cached map[strin
 			fn, workers, gap = e.shodanHost, 1, 1100*time.Millisecond // Shodan allows ~1 request/second
 		case "censys":
 			fn, workers, gap = e.censysHost, 1, 1000*time.Millisecond
+		case "isc":
+			fn, workers, gap = e.iscHost, 1, 1000*time.Millisecond // SANS asks automated clients to go gently
 		}
 		e.runSource(ctx, src, todo, workers, gap, fn, put)
 	}

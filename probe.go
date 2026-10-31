@@ -121,6 +121,8 @@ type WebResult struct {
 	Hits       []PathHit
 	Portals    []PortalHit // sign-in pages and consoles recognised (portals.go)
 	SecTxt     string      // apex and www over HTTPS only: "present", "missing", or "" (not checked)
+	Takeover   string      // the unclaimed service page shown, e.g. "GitHub Pages via x.github.io" ("" = none)
+	rootBody   []byte      // the home page, kept only until the takeover check has run
 	BodyHash   string
 	Err        string
 	TLSChecked bool
@@ -490,6 +492,7 @@ func (p *Prober) probeWeb(ctx context.Context, host, ip string, port int, scheme
 	}
 	sum := sha256.Sum256(root.Body)
 	wr.BodyHash = fmt.Sprintf("%x", sum[:8])
+	wr.rootBody = root.Body
 	wr.Portals = portalsOnPage(root.Status, root.Header, root.Body)
 	if p.cfg.Paths {
 		for _, sp := range sensitivePaths {
