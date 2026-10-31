@@ -49,7 +49,7 @@ func (s *Store) IntelRaw(ip string) ([]RawIntel, error) {
 
 // ServiceRec is one stored observation of an open port.
 type ServiceRec struct {
-	Port                                           int
+	Port                                            int
 	Transport, Source, Product, FirstSeen, LastSeen string
 }
 

@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -17,11 +18,13 @@ func labListener(t *testing.T, banner string) string {
 	return net.JoinHostPort(ip, fmt.Sprint(port))
 }
 
-func labClosedPort(t *testing.T) string { return net.JoinHostPort("127.0.0.1", fmt.Sprint(closedPort(t))) }
+func labClosedPort(t *testing.T) string {
+	return net.JoinHostPort("127.0.0.1", fmt.Sprint(closedPort(t)))
+}
 
 // TestLab starts the whole application against a made-up company ("acme-corp.test")
 // with realistic weaknesses, so a person or a browser script can try the web interface.
-// It only runs when EASM_LAB=1 and stops when the file /tmp/lab.stop appears.
+// It only runs when EASM_LAB=1 and stops when the file lab.stop appears in labDir().
 func TestLab(t *testing.T) {
 	if os.Getenv("EASM_LAB") == "" {
 		t.Skip("set EASM_LAB=1 to run the interactive lab")
@@ -97,17 +100,18 @@ func TestLab(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go h.eng.Run(ctx)
-	_ = os.Remove("/tmp/lab.stop")
-	_ = os.WriteFile("/tmp/lab.setup-code", []byte(e.web.SetupCode()), 0o600) // nosemgrep: go.lang.security.bad_tmp.bad-tmp-file-creation -- the opt-in lab (EASM_LAB=1) hands its throwaway setup code to the UAT scripts, like its other /tmp control files
-	_ = os.WriteFile("/tmp/lab.ready", []byte("ready"), 0o600)
+	dir := labDir()
+	_ = os.Remove(filepath.Join(dir, "lab.stop"))
+	_ = os.WriteFile(filepath.Join(dir, "lab.setup-code"), []byte(e.web.SetupCode()), 0o600) // nosemgrep: go.lang.security.bad_tmp.bad-tmp-file-creation -- the opt-in lab (EASM_LAB=1) hands its throwaway setup code to the UAT scripts, like its other control files
+	_ = os.WriteFile(filepath.Join(dir, "lab.ready"), []byte("ready"), 0o600)
 	for i := 0; i < 2400; i++ { // up to 40 minutes
 		var b strings.Builder
 		for i, m := range h.smtp.all() {
 			fmt.Fprintf(&b, "=== mail %d ===\n%s\n", i+1, m)
 		}
-		_ = os.WriteFile("/tmp/lab-mails.txt", []byte(b.String()), 0o600)
-		if _, err := os.Stat("/tmp/lab.mutate"); err == nil {
-			_ = os.Remove("/tmp/lab.mutate")
+		_ = os.WriteFile(filepath.Join(dir, "lab-mails.txt"), []byte(b.String()), 0o600)
+		if _, err := os.Stat(filepath.Join(dir, "lab.mutate")); err == nil {
+			_ = os.Remove(filepath.Join(dir, "lab.mutate"))
 			// A week later: a new forgotten host appears, RDP is closed, a database port opens, a certificate is issued.
 			d.add(t, "payments.acme-corp.test. 60 IN A 198.51.100.99")
 			d.addIP(t, "198.51.100.99", 64999, "198.51.100.0/24", "CHEAP-HOSTING-LTD")
@@ -116,9 +120,17 @@ func TestLab(t *testing.T) {
 			h.intel.idb["203.0.113.30"] = idbBody("203.0.113.30", []int{443, 8443, 6379}, nil, nil)
 			d.remove("www.acme-corp.test.", dns.TypeA)
 		}
-		if _, err := os.Stat("/tmp/lab.stop"); err == nil {
+		if _, err := os.Stat(filepath.Join(dir, "lab.stop")); err == nil {
 			return
 		}
 		time.Sleep(time.Second)
 	}
+}
+
+// labDir is where the lab exchanges control files with the UAT scripts: $EASM_LAB_DIR, or /tmp.
+func labDir() string {
+	if d := os.Getenv("EASM_LAB_DIR"); d != "" {
+		return d
+	}
+	return "/tmp"
 }
