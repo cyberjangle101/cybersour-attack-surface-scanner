@@ -100,10 +100,24 @@ Always test the feature that changed, plus anything it could break. Add a Go tes
 - `main` needs the Security Scan workflow to pass and owner approval. Do not try to bypass it.
 - Pushes to a branch with no PR are refused by the code-scanning rule (except the push that creates it): push once, then open the PR.
 - After every code change or release is merged, run the release workflow to build a new exe and publish it on the Releases page:
-  bump the version in the README, tag `vX.Y.Z` on the merge commit and push the tag. Never upload hand-built exes to Releases
+  bump the version in the README, then follow "UAT before production" below. Never upload hand-built exes to Releases
   (they carry no release key or signed `SHA256SUMS`, so agents cannot update from them).
-- Publishing is tag-driven: after the PR merges, tag `vX.Y.Z` on `main` and push the tag. `.github/workflows/release.yml` builds,
-  scans, signs `SHA256SUMS` with the `EASM_RELEASE_SIGNING_KEY` secret and publishes. See RELEASING.md. Never handle the private key.
+- Publishing is tag-driven. `.github/workflows/release.yml` builds, scans, signs `SHA256SUMS` with the
+  `EASM_RELEASE_SIGNING_KEY` secret and publishes. See RELEASING.md. Never handle the private key.
+
+### UAT before production (every change)
+
+Every change goes to the UAT environment first, and reaches production only after it passes there.
+
+1. UAT: after the PR merges, tag `vX.Y.Z-rc.N` (N from 1) on the merge commit and push the tag. The release workflow runs in
+   the GitHub `UAT` environment (it only accepts `v*.*.*-rc.*` tags) and publishes a signed pre-release.
+   Installed agents never update to pre-releases, so no user receives it.
+2. Test that RC build, not a local build: `go run ./tools/release verify -dir`, the exe's `-version`, the UAT steps (gate 9),
+   and `service-test.ps1` (I run it elevated) when service or install code changed. Report the results to me.
+3. Production: only when UAT passes and I agree, tag `vX.Y.Z` on the same commit as the passing RC and push it. Then check the
+   signature, `-version`, and that the previous release offers the update.
+4. If UAT fails, do not tag production. Fix it in a new PR, merge, and tag the next `-rc.N+1`.
+   Never tag `vX.Y.Z` on a commit with no passing RC.
 - Installed agents self-update from those releases (`update.go`): never weaken the signature, version-header or GitHub-host checks.
   Plain HTTP and other hosts are only for `-X main.updateAPIBase=http://127.0.0.1:...` test builds.
 - Local release build (for testing): `CGO_ENABLED=0 go build -ldflags "-s -w -X main.version=X.Y.Z"` with the newest Go toolchain,
