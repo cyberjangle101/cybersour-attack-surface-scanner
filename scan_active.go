@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net"
@@ -129,6 +130,8 @@ func (s *Scanner) gatherActive(ctx context.Context, t *Target, hosts []string, r
 			defer wg.Done()
 			defer func() { <-sem }()
 			wr := pr.probeWeb(ctx, j.host, j.ip, j.port, schemeFor(j.port))
+			wr.Takeover = s.unclaimedService(results[j.host], wr.rootBody)
+			wr.rootBody = nil
 			if wr.Reached && j.port == 443 && (j.host == t.Domain || j.host == "www."+t.Domain) {
 				wr.SecTxt = pr.securityTxt(ctx, j.host, j.ip) // the organisation's main site should say how to report a vulnerability
 			}
@@ -258,6 +261,10 @@ func (s *Scanner) applyActive(tx *Tx, root string, d *activeData, now string, em
 			raise(k("login-portal", portalSlug(ph.Name)), "login-portal", ph.Severity, wr.Host,
 				fmt.Sprintf("%s login is public at %s (%s): %s.", ph.Name, at, strings.ToLower(ph.Category), portalWhy(ph.Category)), "")
 		}
+		if wr.Takeover != "" {
+			raise(k("subdomain-takeover"), "subdomain-takeover", "high", wr.Host, fmt.Sprintf("%s shows the page %s gives for a name nobody has claimed. "+
+				"Anyone can create that resource and serve their own content from %s.", wr.URL(), wr.Takeover, wr.Host), "")
+		}
 		if wr.SecTxt == "missing" {
 			raise(k("no-security-txt"), "no-security-txt", "low", wr.Host, fmt.Sprintf("%s has no /.well-known/security.txt telling researchers how to report a vulnerability.", wr.URL()), "")
 		}
@@ -286,6 +293,22 @@ func (s *Scanner) applyActive(tx *Tx, root string, d *activeData, now string, em
 		}
 	}
 	return nil
+}
+
+// unclaimedService reports a host whose CNAME points at a claimable service (per the
+// can-i-take-over-xyz fingerprints) that answers with its "nothing here" page: a
+// takeover the NXDOMAIN check cannot see, because the name still resolves.
+func (s *Scanner) unclaimedService(hr *HostResult, body []byte) string {
+	if hr == nil || len(body) == 0 || !s.cfg.Intel.Takeover {
+		return ""
+	}
+	for _, target := range hr.Records["CNAME"] {
+		tp, ok := s.feeds.TakeoverFor(target)
+		if ok && tp.Fingerprint != "" && bytes.Contains(body, []byte(tp.Fingerprint)) {
+			return tp.Service + " (via " + strings.TrimSuffix(target, ".") + ")"
+		}
+	}
+	return ""
 }
 
 func titleNote(t string) string {

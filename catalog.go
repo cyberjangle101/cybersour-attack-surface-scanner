@@ -71,6 +71,19 @@ var findingCatalog = map[string]FindingInfo{
 		Risk:     "Files such as .git folders, .env files, backups and status pages leak source code, passwords, API keys and internal details that let attackers go much further.",
 		Solution: "Block public access to the path in the web server configuration and remove the file from the web root. Treat any secrets in it as compromised and rotate them.",
 	},
+	"subdomain-takeover": {
+		Title:  "Name shows an unclaimed service page (subdomain takeover)",
+		Source: "Active check: the home page matched a can-i-take-over-xyz fingerprint for the service the CNAME points at",
+		Risk: "The name still points at a hosting or SaaS service, but nothing is set up there any more and the service says so. " +
+			"Anyone can create a resource with that name and publish their own content (phishing, malware, cookie theft) on your domain.",
+		Solution: "Delete the DNS record if the service is retired, or claim the name again at the provider in your own account. Check other records that point at the same provider.",
+	},
+	"tor-exit": {
+		Title:    "Address is a Tor exit node",
+		Source:   "Tor Project bulk exit list (check.torproject.org)",
+		Risk:     "Traffic from anyone using Tor leaves the internet from this address. Abuse reports, blocklists and investigators will point at it, and on a server you did not mean to run as an exit it can mean the host was taken over.",
+		Solution: "If the exit is intended, document it and keep it on a separate address from your services. If not, find and stop the Tor process and investigate how it got there.",
+	},
 	"login-portal": {
 		Title:  "Login portal or admin console is public",
 		Source: "Active check: the site's home page, and well-known sign-in pages, recognised by the product's own wording",
@@ -272,7 +285,7 @@ var findingCatalog = map[string]FindingInfo{
 	},
 	"known-vuln": {
 		Title:  "Host associated with known vulnerabilities (CVEs)",
-		Source: "Exposure intelligence (CVE list from Shodan InternetDB / Shodan)",
+		Source: "Exposure intelligence (CVE list from Shodan InternetDB / Shodan), ranked by CISA KEV and FIRST EPSS",
 		Risk: "The service banners on this address match software versions with published vulnerabilities. Matches are inferred from banners, " +
 			"so some may not apply (for example if fixes were back-ported), but each is worth verifying.",
 		Solution: "Check each CVE against the software actually running, apply vendor patches or upgrade, and re-scan. " +
@@ -280,7 +293,7 @@ var findingCatalog = map[string]FindingInfo{
 	},
 	"ip-flagged": {
 		Title:  "Address flagged as compromised or malicious",
-		Source: "Exposure intelligence (tags on Shodan InternetDB / Shodan)",
+		Source: "Exposure intelligence (tags on Shodan InternetDB / Shodan) and SANS Internet Storm Center attack reports",
 		Risk: "The intelligence source tags this IP as compromised, running malware or carrying a known backdoor. " +
 			"It may be hosting attacker tooling or be part of a botnet.",
 		Solution: "Treat the host as potentially compromised: isolate it, investigate, and rebuild from a known-good image if confirmed.",
@@ -332,6 +345,8 @@ func sourceLabel(id string) string {
 		return "VirusTotal"
 	case "rdap":
 		return "RDAP"
+	case "isc":
+		return "SANS ISC"
 	}
 	return id
 }

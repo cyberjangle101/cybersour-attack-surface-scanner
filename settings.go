@@ -56,6 +56,9 @@ type Settings struct {
 	HackerTargetEnabled bool
 	OTXEnabled          bool
 	AnubisEnabled       bool
+	CertSpotterEnabled  bool // second Certificate Transparency search (no key)
+	URLScanEnabled      bool // names in public urlscan.io scans (no key)
+	WaybackEnabled      bool // names in Wayback Machine archived URLs (no key; slow)
 
 	// DNS
 	DNSResolvers      []string
@@ -63,22 +66,29 @@ type Settings struct {
 	DNSQPS            int
 	DNSTimeoutSeconds int
 	DNSRetries        int
+	DNSOverHTTPS      bool // fall back to DNS-over-HTTPS (Google, Cloudflare) when port 53 is blocked
 
 	// ASN mapping
 	ASNEnabled         bool
 	ASNBGPViewFallback bool
 
 	// Exposure intelligence (third-party services that receive your IPs / domain names)
-	InternetDBEnabled  bool
-	RDAPEnabled        bool
-	ShodanEnabled      bool
-	ShodanDomainLookup bool
-	CensysEnabled      bool
-	CensysOrgID        string
-	VirusTotalEnabled  bool
-	HIBPEnabled        bool // leaked-credential check (Have I Been Pwned)
-	GitHubEnabled      bool // code-repository exposure check
-	EnrichMaxIPs       int
+	InternetDBEnabled   bool
+	RDAPEnabled         bool
+	ISCEnabled          bool // SANS Internet Storm Center attack reports per address (no key)
+	EPSSEnabled         bool // FIRST exploit-prediction scores for CVEs (no key)
+	KEVEnabled          bool // CISA Known Exploited Vulnerabilities catalogue (download)
+	TorExitEnabled      bool // Tor Project exit-node list (download)
+	CloudRangesEnabled  bool // cloud and CDN providers' published IP ranges (downloads)
+	TakeoverFeedEnabled bool // can-i-take-over-xyz takeover fingerprints (download)
+	ShodanEnabled       bool
+	ShodanDomainLookup  bool
+	CensysEnabled       bool
+	CensysOrgID         string
+	VirusTotalEnabled   bool
+	HIBPEnabled         bool // leaked-credential check (Have I Been Pwned)
+	GitHubEnabled       bool // code-repository exposure check
+	EnrichMaxIPs        int
 
 	// Active checks (connect to your own servers; off by default)
 	ActiveChecks         bool
@@ -138,19 +148,29 @@ func DefaultSettings() Settings {
 		HackerTargetEnabled: true,
 		OTXEnabled:          false, // needs a free API key since OTX closed anonymous passive DNS
 		AnubisEnabled:       false, // jonlu.ca sits behind a Cloudflare bot challenge that refuses non-browser clients
+		CertSpotterEnabled:  true,
+		URLScanEnabled:      true,
+		WaybackEnabled:      false, // the archive is slow and often times out for large domains
 
 		DNSResolvers:      []string{"1.1.1.1:53", "8.8.8.8:53"},
 		DNSWorkers:        20,
 		DNSQPS:            50,
 		DNSTimeoutSeconds: 4,
 		DNSRetries:        2,
+		DNSOverHTTPS:      true,
 
 		ASNEnabled:         true,
 		ASNBGPViewFallback: true,
 
-		InternetDBEnabled: true,
-		RDAPEnabled:       true,
-		EnrichMaxIPs:      250,
+		InternetDBEnabled:   true,
+		RDAPEnabled:         true,
+		ISCEnabled:          true,
+		EPSSEnabled:         true,
+		KEVEnabled:          true,
+		TorExitEnabled:      true,
+		CloudRangesEnabled:  true,
+		TakeoverFeedEnabled: true,
+		EnrichMaxIPs:        250,
 
 		ActivePaths:          true,
 		ActiveBuckets:        true,
@@ -319,6 +339,9 @@ func (s Settings) RuntimeWith(sec Secrets) *Config {
 			},
 			HackerTarget: Toggle{s.HackerTargetEnabled},
 			Anubis:       Toggle{s.AnubisEnabled},
+			CertSpotter:  Toggle{s.CertSpotterEnabled},
+			URLScan:      Toggle{s.URLScanEnabled},
+			Wayback:      Toggle{s.WaybackEnabled},
 			UserAgent:    "easm-agent/" + version + " (+defensive attack-surface monitoring)",
 		},
 		DNS: DNSCfg{
@@ -345,6 +368,10 @@ func (s Settings) RuntimeWith(sec Secrets) *Config {
 	c.Sources.OTX.Enabled, c.Sources.OTX.Key = s.OTXEnabled && sec.OTX != "", sec.OTX
 	in := &c.Intel
 	in.InternetDB, in.RDAP = s.InternetDBEnabled, s.RDAPEnabled
+	in.ISC, in.EPSS, in.KEV, in.TorExits, in.Cloud, in.Takeover = s.ISCEnabled, s.EPSSEnabled, s.KEVEnabled, s.TorExitEnabled, s.CloudRangesEnabled, s.TakeoverFeedEnabled
+	if s.DNSOverHTTPS {
+		c.DNS.DoHFallback = dohFallbacks
+	}
 	in.Shodan.Enabled, in.Shodan.Key, in.Shodan.DomainLookup = s.ShodanEnabled && sec.Shodan != "", sec.Shodan, s.ShodanDomainLookup
 	in.Censys.Enabled, in.Censys.Token, in.Censys.OrgID = s.CensysEnabled && sec.Censys != "", sec.Censys, s.CensysOrgID
 	in.VirusTotal.Enabled, in.VirusTotal.Key = s.VirusTotalEnabled && sec.VirusTotal != "", sec.VirusTotal
@@ -353,3 +380,6 @@ func (s Settings) RuntimeWith(sec Secrets) *Config {
 	in.MaxIPs, in.CacheTTL = s.EnrichMaxIPs, 24*time.Hour
 	return c
 }
+
+// dohFallbacks are the DNS-over-HTTPS servers asked when a configured resolver cannot be reached.
+var dohFallbacks = []string{"https://dns.google/dns-query", "https://cloudflare-dns.com/dns-query"}

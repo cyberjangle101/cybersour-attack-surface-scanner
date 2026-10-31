@@ -40,7 +40,7 @@ type Discovery struct {
 }
 
 // sourceURLs holds the base URLs of the passive sources (overridable in tests).
-type sourceURLs struct{ crtsh, hackertarget, otx, anubis string }
+type sourceURLs struct{ crtsh, hackertarget, otx, anubis, certspotter, urlscan, wayback string }
 
 // Discoverer queries the passive subdomain sources (crt.sh, HackerTarget, OTX, Anubis and the optional keyed ones) and merges the results.
 type Discoverer struct {
@@ -64,6 +64,9 @@ func NewDiscoverer(cfg *Config, log *slog.Logger) *Discoverer {
 		hackertarget: "https://api.hackertarget.com/hostsearch/",
 		otx:          "https://otx.alienvault.com/api/v1/indicators/domain/",
 		anubis:       "https://jonlu.ca/anubis/subdomains/", // jldc.me now 301-redirects here
+		certspotter:  "https://api.certspotter.com/v1/issuances",
+		urlscan:      "https://urlscan.io/api/v1/search/",
+		wayback:      "https://web.archive.org/cdx/search/cdx",
 	}}
 }
 
@@ -191,6 +194,15 @@ func (d *Discoverer) Discover(ctx context.Context, root string) *Discovery {
 	if sc.Anubis.Enabled {
 		jobs = append(jobs, job{"anubis", hostsOnly(d.fetchAnubis)})
 	}
+	if sc.CertSpotter.Enabled {
+		jobs = append(jobs, job{"certspotter", hostsOnly(d.fetchCertSpotter)})
+	}
+	if sc.URLScan.Enabled {
+		jobs = append(jobs, job{"urlscan", hostsOnly(d.fetchURLScan)})
+	}
+	if sc.Wayback.Enabled {
+		jobs = append(jobs, job{"wayback", hostsOnly(d.fetchWayback)})
+	}
 
 	if d.enr != nil {
 		in := d.cfg.Intel
@@ -257,8 +269,9 @@ func (d *Discoverer) Discover(ctx context.Context, root string) *Discovery {
 		}
 		d.log.Info("discovery source finished", "domain", root, "source", r.name, "hosts", added, "certs", len(r.certs), "took", r.took.Round(time.Millisecond).String())
 	}
-	if sc.CrtSh.Enabled {
-		out.Complete = out.OK["crtsh"]
+	// Certificate Transparency is the authoritative record of names: the scan is complete when a CT source answered.
+	if sc.CrtSh.Enabled || sc.CertSpotter.Enabled {
+		out.Complete = out.OK["crtsh"] || out.OK["certspotter"]
 	} else {
 		out.Complete = out.AnyOK
 	}

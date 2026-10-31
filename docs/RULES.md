@@ -8,7 +8,7 @@ This is every check the EASM Agent runs against a monitored domain: the finding 
 
 * **Passive checks** read public DNS, registration data (RDAP) and public sources. They send nothing to the organisation's own servers.
 * **Active checks** connect to the organisation's own web servers and are off unless switched on (Settings → Active checks, or the first-scan option when a domain is added). They use read-only `GET` requests and TLS handshakes, follow no redirects, connect only to public routable addresses, and by default only to addresses inside the domain's expected ownership. Exposed-file and login-portal path checks need the separate *exposed files* option.
-* **Third-party intelligence** (Shodan InternetDB, Shodan, Censys) is often stale. Its findings are *Unconfirmed* until a second, independent source agrees: Censys, the agent's own active check, or an analyst. InternetDB and the Shodan API count as one source. Unconfirmed findings are listed but not alerted, counted or reported.
+* **Third-party intelligence** (Shodan InternetDB, Shodan, Censys) is often stale. Its findings are *Unconfirmed* until a second, independent source agrees: Censys, the agent's own active check, SANS ISC attack reports (for flagged addresses), or an analyst. InternetDB and the Shodan API count as one source. Unconfirmed findings are listed but not alerted, counted or reported.
 * **Resolution.** A finding resolves automatically only when a later scan actually re-checked the thing it is about and found it fixed; an outage or unreachable server never closes a finding.
 * **Severity** is High, Medium, Low or Info; analysts can override it per finding with a reason.
 
@@ -22,16 +22,18 @@ This is every check the EASM Agent runs against a monitored domain: the finding 
 | EASM-CLOUD-001 | Cloud storage bucket can be listed by anyone | `bucket-public` | Active: connects to the organisation's own servers (opt-in) | High |
 | EASM-CLOUD-002 | Name points to a storage bucket that does not exist | `bucket-takeover` | Active: connects to the organisation's own servers (opt-in) | High |
 | EASM-CLOUD-003 | Managed database or cache named in public DNS | `cloud-datastore` | Passive: DNS | Medium |
-| EASM-DNS-001 | Dangling CNAME (possible subdomain takeover) | `dangling-cname` | Passive: DNS | High on a claim-able platform (see takeover platforms), otherwise Low |
+| EASM-DNS-001 | Dangling CNAME (possible subdomain takeover) | `dangling-cname` | Passive: DNS | High on a claim-able platform (see takeover platforms, plus the can-i-take-over-xyz services that report NXDOMAIN), otherwise Low |
 | EASM-DNS-002 | Private address in public DNS | `private-ip` | Passive: DNS | Low |
 | EASM-DNS-003 | Address outside expected ownership | `asn-unexpected` | Passive: DNS | High |
 | EASM-DNS-004 | No CAA record | `email-auth/no-caa` | Passive: DNS | Low |
 | EASM-DNS-005 | DNSSEC is not enabled | `email-auth/no-dnssec` | Passive: DNS | Low |
 | EASM-DNS-006 | Domain registration expiring | `domain-expiry` | Passive: registration data (RDAP) | High within 14 days (or expired), Medium within 30, Low within 60 |
+| EASM-DNS-007 | Name shows an unclaimed service page (subdomain takeover) | `subdomain-takeover` | Active: connects to the organisation's own servers (opt-in) | High |
 | EASM-EXP-001 | Sensitive service reachable from the internet | `exposed-service` | Third-party intelligence (needs a second source to be trusted) | High for the high-risk ports, Medium for the other risky ports (see risky ports) |
-| EASM-EXP-002 | Host associated with known vulnerabilities (CVEs) | `known-vuln` | Third-party intelligence (needs a second source to be trusted) | High with 10 or more CVEs, otherwise Medium |
+| EASM-EXP-002 | Host associated with known vulnerabilities (CVEs) | `known-vuln` | Third-party intelligence (needs a second source to be trusted) | High with any CVE in CISA KEV, an EPSS of 50% or more, or 10 or more CVEs; otherwise Medium |
 | EASM-EXP-003 | Address flagged as compromised or malicious | `ip-flagged` | Third-party intelligence (needs a second source to be trusted) | High |
 | EASM-EXP-004 | End-of-life operating system or software | `eol-software` | Third-party intelligence (needs a second source to be trusted) | Medium |
+| EASM-EXP-005 | Address is a Tor exit node | `tor-exit` | Passive: Tor Project exit list (download) | Medium |
 | EASM-MAIL-001 | No SPF record | `email-auth/no-spf` | Passive: DNS | Medium |
 | EASM-MAIL-002 | More than one SPF record | `email-auth/spf-multiple` | Passive: DNS | High |
 | EASM-MAIL-003 | SPF allows any sender | `email-auth/spf-permissive` | Passive: DNS | High |
@@ -62,7 +64,7 @@ This is every check the EASM Agent runs against a monitored domain: the finding 
 | EASM-WEB-003 | Default web server page is public | `default-page` | Active: connects to the organisation's own servers (opt-in) | Low |
 | EASM-WEB-004 | No security.txt on the main site | `no-security-txt` | Active: connects to the organisation's own servers (opt-in) | Low |
 
-45 rules.
+47 rules.
 
 ## DNS and domain
 
@@ -71,7 +73,7 @@ This is every check the EASM Agent runs against a monitored domain: the finding 
 * **Finding type:** `dangling-cname`
 * **Collection:** Passive: DNS
 * **Triggered when:** A CNAME record whose target does not exist (NXDOMAIN).
-* **Severity:** High on a claim-able platform (see takeover platforms), otherwise Low
+* **Severity:** High on a claim-able platform (see takeover platforms, plus the can-i-take-over-xyz services that report NXDOMAIN), otherwise Low
 * **Evidence:** DNS resolvers (the name has a CNAME record whose target returns NXDOMAIN)
 * **Why it matters:** The name is an alias (CNAME) for a target that no longer exists. It becomes exploitable only if someone else can claim that target: an unused name on a shared platform (GitHub Pages, Azure, S3, Heroku and similar), or a lapsed domain anyone can register. They could then serve content from your domain (phishing, malware, cookie theft). If the target cannot be claimed it is just a broken record: harmless to attackers but worth cleaning up. Severity is High only when the target is on a known claim-able platform.
 * **What to do:** Delete the DNS record if the service is retired. If it is still needed, re-create the resource at the provider so you own the target again. Review other records that point at the same provider.
@@ -125,6 +127,16 @@ This is every check the EASM Agent runs against a monitored domain: the finding 
 * **Evidence:** RDAP (registry registration data)
 * **Why it matters:** If the registration lapses, the domain and everything on it (website, email, certificates) goes offline, and an attacker could re-register it and receive your mail.
 * **What to do:** Renew the domain now and enable auto-renew with a current payment method. Make sure renewal notices go to a monitored mailbox.
+
+### EASM-DNS-007: Name shows an unclaimed service page (subdomain takeover)
+
+* **Finding type:** `subdomain-takeover`
+* **Collection:** Active: connects to the organisation's own servers (opt-in)
+* **Triggered when:** A name's CNAME points at a service listed as claimable by can-i-take-over-xyz, and its home page shows that service's 'nothing here' text.
+* **Severity:** High
+* **Evidence:** Active check: the home page matched a can-i-take-over-xyz fingerprint for the service the CNAME points at
+* **Why it matters:** The name still points at a hosting or SaaS service, but nothing is set up there any more and the service says so. Anyone can create a resource with that name and publish their own content (phishing, malware, cookie theft) on your domain.
+* **What to do:** Delete the DNS record if the service is retired, or claim the name again at the provider in your own account. Check other records that point at the same provider.
 
 ## Email authentication
 
@@ -460,7 +472,7 @@ This is every check the EASM Agent runs against a monitored domain: the finding 
 
 * **Finding type:** `exposed-service`
 * **Collection:** Third-party intelligence (needs a second source to be trusted)
-* **Triggered when:** An intelligence source reports one of the risky ports open on an address of the domain (CDN addresses are skipped).
+* **Triggered when:** An intelligence source reports one of the risky ports open on an address of the domain. Addresses on a CDN edge are skipped: tagged cdn by Shodan, or inside the published Cloudflare, Fastly, CloudFront or GitHub Pages ranges.
 * **Severity:** High for the high-risk ports, Medium for the other risky ports (see risky ports)
 * **Evidence:** Exposure intelligence (Shodan InternetDB / Shodan / Censys scan data)
 * **Why it matters:** Remote-administration, file-sharing and database ports are frequent targets for brute force, ransomware and exploitation of unpatched flaws. Scan data may be days old, so confirm the port is still open.
@@ -470,9 +482,9 @@ This is every check the EASM Agent runs against a monitored domain: the finding 
 
 * **Finding type:** `known-vuln`
 * **Collection:** Third-party intelligence (needs a second source to be trusted)
-* **Triggered when:** Shodan lists CVEs for the software versions seen on an address.
-* **Severity:** High with 10 or more CVEs, otherwise Medium
-* **Evidence:** Exposure intelligence (CVE list from Shodan InternetDB / Shodan)
+* **Triggered when:** Shodan lists CVEs for the software versions seen on an address. CVEs in CISA KEV come first, then the highest FIRST EPSS scores.
+* **Severity:** High with any CVE in CISA KEV, an EPSS of 50% or more, or 10 or more CVEs; otherwise Medium
+* **Evidence:** Exposure intelligence (CVE list from Shodan InternetDB / Shodan), ranked by CISA KEV and FIRST EPSS
 * **Why it matters:** The service banners on this address match software versions with published vulnerabilities. Matches are inferred from banners, so some may not apply (for example if fixes were back-ported), but each is worth verifying.
 * **What to do:** Check each CVE against the software actually running, apply vendor patches or upgrade, and re-scan. If the service does not need to be public, remove it from the internet.
 
@@ -480,9 +492,9 @@ This is every check the EASM Agent runs against a monitored domain: the finding 
 
 * **Finding type:** `ip-flagged`
 * **Collection:** Third-party intelligence (needs a second source to be trusted)
-* **Triggered when:** Shodan tags an address compromised, malware or doublepulsar.
+* **Triggered when:** Shodan tags an address compromised, malware or doublepulsar, or SANS ISC has reports of it attacking DShield sensors or lists it on a compromised-host feed (Emerging Threats compromised, CINS Army). The two are independent, so together they make the finding trusted.
 * **Severity:** High
-* **Evidence:** Exposure intelligence (tags on Shodan InternetDB / Shodan)
+* **Evidence:** Exposure intelligence (tags on Shodan InternetDB / Shodan) and SANS Internet Storm Center attack reports
 * **Why it matters:** The intelligence source tags this IP as compromised, running malware or carrying a known backdoor. It may be hosting attacker tooling or be part of a botnet.
 * **What to do:** Treat the host as potentially compromised: isolate it, investigate, and rebuild from a known-good image if confirmed.
 
@@ -495,6 +507,16 @@ This is every check the EASM Agent runs against a monitored domain: the finding 
 * **Evidence:** Exposure intelligence (eol tags on Shodan InternetDB / Shodan)
 * **Why it matters:** Software that no longer receives security updates accumulates unpatched vulnerabilities that attackers can rely on. The evidence column lists the OS, software versions and services detected on the host so you can see what is out of support.
 * **What to do:** Upgrade or replace the affected component, or isolate it behind a firewall until it can be retired.
+
+### EASM-EXP-005: Address is a Tor exit node
+
+* **Finding type:** `tor-exit`
+* **Collection:** Passive: Tor Project exit list (download)
+* **Triggered when:** An address the domain's names resolve to is on the Tor Project's current exit-node list.
+* **Severity:** Medium
+* **Evidence:** Tor Project bulk exit list (check.torproject.org)
+* **Why it matters:** Traffic from anyone using Tor leaves the internet from this address. Abuse reports, blocklists and investigators will point at it, and on a server you did not mean to run as an exit it can mean the host was taken over.
+* **What to do:** If the exit is intended, document it and keep it on a separate address from your services. If not, find and stop the Tor process and investigate how it got there.
 
 ## Brand and leak monitoring
 
@@ -527,6 +549,38 @@ This is every check the EASM Agent runs against a monitored domain: the finding 
 * **Evidence:** GitHub code search
 * **Why it matters:** A public repository contains your domain name close to words such as password, secret or token. It may hold real credentials, internal addresses or configuration that helps an attacker. It is also often harmless, such as documentation or an example.
 * **What to do:** Open the listed files. If they hold real secrets, change those secrets immediately (removing the file is not enough, because history is kept), then ask the owner or GitHub to take the repository down. If it is harmless, accept the risk with a note.
+
+## Data sources
+
+Every external source the agent can use, whether it needs a key, what it is sent and which rules it feeds. Each one can be switched off in Settings, and System health shows whether it is working. Sources that publish a whole dataset are downloaded at most once a day (Tor: every 6 hours, slow-changing lists: weekly), checked before use, kept in the encrypted database, and the last good copy stays in use when a download fails.
+
+| Source | Used for | Key | Sent to it | Default | Rules |
+|---|---|---|---|---|---|
+| crt.sh | Subdomain discovery (Certificate Transparency) | None | The domain name | On | Inventory; DNS-001...007 and every host-based rule |
+| CertSpotter | Subdomain discovery (Certificate Transparency) | None (100 requests/hour) | The domain name | On | Inventory; a scan counts as complete when crt.sh or CertSpotter answered |
+| HackerTarget | Subdomain discovery | None (about 50 requests/day) | The domain name | On | Inventory |
+| urlscan.io | Subdomain discovery (public scans) | None | The domain name | On | Inventory |
+| Wayback Machine | Subdomain discovery (archived URLs) | None | The domain name | Off (slow) | Inventory |
+| AlienVault OTX | Subdomain discovery (passive DNS) | Free key | The domain name | Off until a key is saved | Inventory |
+| Anubis (jonlu.ca) | Subdomain discovery | None | The domain name | Off (blocks automated clients) | Inventory |
+| Shodan DNS | Subdomain discovery | Shodan key (1 query credit per scan) | The domain name | Off | Inventory |
+| VirusTotal | Subdomain discovery | Free key | The domain name | Off until a key is saved | Inventory |
+| Public DNS resolvers (1.1.1.1, 8.8.8.8) | DNS | None | Host names | On | All DNS and email rules |
+| DNS-over-HTTPS (Google, Cloudflare) | DNS fallback when port 53 is blocked | None | Host names | On | All DNS and email rules |
+| Team Cymru | IP to network owner (DNS) | None | IP addresses | On | DNS-003 |
+| RIPEstat | IP to network owner (fallback) | None | IP addresses | On | DNS-003 |
+| Cloud and CDN IP ranges (AWS, Google Cloud, Cloudflare, Fastly, Oracle Cloud, GitHub) | Reference download | None | Nothing (plain downloads) | On | EXP-001 skips CDN edges; findings name the hosting provider |
+| RDAP (rdap.org) | Registration data | None | The domain name | On | DNS-006 |
+| Shodan InternetDB | Exposure intelligence | None | IP addresses | On | EXP-001...004 |
+| Shodan API | Exposure intelligence | Shodan key | IP addresses | Off until a key is saved | EXP-001...004 |
+| Censys | Exposure intelligence | Personal access token | IP addresses | Off until a token is saved | EXP-001 (an independent second source) |
+| SANS Internet Storm Center | Threat intelligence (attack reports) | None | IP addresses | On | EXP-003 (an independent second source to Shodan's tags) |
+| Tor Project exit list | Threat intelligence (download) | None | Nothing (plain download) | On | EXP-005 |
+| CISA Known Exploited Vulnerabilities | Vulnerability intelligence (download) | None | Nothing (plain download) | On | EXP-002 severity and ordering |
+| FIRST EPSS | Vulnerability intelligence | None | CVE identifiers | On | EXP-002 severity and ordering |
+| can-i-take-over-xyz fingerprints | Takeover intelligence (download) | None | Nothing (plain download) | On | DNS-001, DNS-007 |
+| Have I Been Pwned | Leak monitoring | Paid key, verified domain | The domain name | Off until a key is saved | BRAND-002 |
+| GitHub code search | Leak monitoring | Token | The domain name | Off until a token is saved | BRAND-003 |
 
 ## Detection tables
 

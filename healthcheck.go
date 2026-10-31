@@ -60,6 +60,13 @@ func (e *Engine) RunHealthChecks(ctx context.Context) {
 	}{
 		{"crtsh", "crt.sh", st.CrtShEnabled}, {"hackertarget", "api.hackertarget.com", st.HackerTargetEnabled},
 		{"otx", "otx.alienvault.com", st.OTXEnabled}, {"anubis", "jonlu.ca", st.AnubisEnabled},
+		{"certspotter", "api.certspotter.com", st.CertSpotterEnabled}, {"urlscan", "urlscan.io", st.URLScanEnabled},
+		{"wayback", "web.archive.org", st.WaybackEnabled},
+		{feedKEV, "www.cisa.gov", st.KEVEnabled}, {feedTor, "check.torproject.org", st.TorExitEnabled},
+		{feedTakeover, "raw.githubusercontent.com", st.TakeoverFeedEnabled},
+		{feedAWS, "ip-ranges.amazonaws.com", st.CloudRangesEnabled}, {feedGCP, "www.gstatic.com", st.CloudRangesEnabled},
+		{feedCloudflare, "api.cloudflare.com", st.CloudRangesEnabled}, {feedFastly, "api.fastly.com", st.CloudRangesEnabled},
+		{feedOracle, "docs.oracle.com", st.CloudRangesEnabled}, {feedGitHub, "api.github.com", st.CloudRangesEnabled},
 	}
 	for _, s := range sources {
 		if s.on {
@@ -76,6 +83,17 @@ func (e *Engine) RunHealthChecks(ctx context.Context) {
 			_, err := r.query(ctx, "example.com", dns.TypeA)
 			return err
 		})
+	}
+	if st.DNSOverHTTPS {
+		for _, addr := range dohFallbacks {
+			addr := addr
+			run("", 15*time.Second, func(ctx context.Context) error {
+				r := NewResolver(ctx, DNSCfg{Resolvers: []string{addr}, QPS: 20, Timeout: 5 * time.Second, Retries: 0})
+				r.health, r.via = e.health, "check"
+				_, err := r.query(ctx, "example.com", dns.TypeA)
+				return err
+			})
+		}
 	}
 	if st.ASNEnabled {
 		run("asn-cymru", 20*time.Second, func(ctx context.Context) error {
@@ -103,6 +121,12 @@ func (e *Engine) RunHealthChecks(ctx context.Context) {
 			}
 			return err
 		})
+	}
+	if cfg.Intel.ISC {
+		run("isc", 20*time.Second, func(ctx context.Context) error { _, err := enr.iscHost(ctx, "1.1.1.1"); return err })
+	}
+	if cfg.Intel.EPSS {
+		run("epss", 20*time.Second, func(ctx context.Context) error { _, err := enr.EPSS(ctx, []string{"CVE-2021-44228"}); return err })
 	}
 	if cfg.Intel.Censys.Enabled {
 		run("censys", 20*time.Second, func(ctx context.Context) error { _, err := enr.censysHost(ctx, "1.1.1.1"); return err })

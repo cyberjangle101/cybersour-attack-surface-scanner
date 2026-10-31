@@ -85,7 +85,7 @@ func renderRules() string {
 	w("## How findings are produced\n\n")
 	w("* **Passive checks** read public DNS, registration data (RDAP) and public sources. They send nothing to the organisation's own servers.\n")
 	w("* **Active checks** connect to the organisation's own web servers and are off unless switched on (Settings → Active checks, or the first-scan option when a domain is added). They use read-only `GET` requests and TLS handshakes, follow no redirects, connect only to public routable addresses, and by default only to addresses inside the domain's expected ownership. Exposed-file and login-portal path checks need the separate *exposed files* option.\n")
-	w("* **Third-party intelligence** (Shodan InternetDB, Shodan, Censys) is often stale. Its findings are *Unconfirmed* until a second, independent source agrees: Censys, the agent's own active check, or an analyst. InternetDB and the Shodan API count as one source. Unconfirmed findings are listed but not alerted, counted or reported.\n")
+	w("* **Third-party intelligence** (Shodan InternetDB, Shodan, Censys) is often stale. Its findings are *Unconfirmed* until a second, independent source agrees: Censys, the agent's own active check, SANS ISC attack reports (for flagged addresses), or an analyst. InternetDB and the Shodan API count as one source. Unconfirmed findings are listed but not alerted, counted or reported.\n")
 	w("* **Resolution.** A finding resolves automatically only when a later scan actually re-checked the thing it is about and found it fixed; an outage or unreachable server never closes a finding.\n")
 	w("* **Severity** is High, Medium, Low or Info; analysts can override it per finding with a reason.\n\n")
 
@@ -112,6 +112,13 @@ func renderRules() string {
 			w("* **What to do:** %s\n\n", r.Info.Solution)
 		}
 	}
+
+	w("## Data sources\n\nEvery external source the agent can use, whether it needs a key, what it is sent and which rules it feeds. Each one can be switched off in Settings, and System health shows whether it is working. Sources that publish a whole dataset are downloaded at most once a day (Tor: every 6 hours, slow-changing lists: weekly), checked before use, kept in the encrypted database, and the last good copy stays in use when a download fails.\n\n")
+	w("| Source | Used for | Key | Sent to it | Default | Rules |\n|---|---|---|---|---|---|\n")
+	for _, s := range dataSources {
+		w("| %s | %s | %s | %s | %s | %s |\n", cell(s.Name), cell(s.Kind), cell(s.Key), cell(s.Sends), cell(s.Default), cell(s.Feeds))
+	}
+	w("\n")
 
 	w("## Detection tables\n\n")
 

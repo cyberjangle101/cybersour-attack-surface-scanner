@@ -486,8 +486,9 @@ func newHarness(t testing.TB) *harness {
 	h := &harness{t: t, dir: dir, store: store, vault: vault, log: log,
 		eng: NewEngine(store, vault, log), dns: newFakeDNS(t), src: newFakeSources(t), smtp: newFakeSMTP(t, nil), intel: newFakeIntel(t)}
 	h.eng.intelURLs = func() *intelURLs { u := h.intel.urls(); return &u }
-	h.eng.healthEvery = 0 // automatic connector checks would reach the real internet
-	h.eng.updateEvery = 0 // so would the daily update check
+	h.eng.healthEvery = 0         // automatic connector checks would reach the real internet
+	h.eng.updateEvery = 0         // so would the daily update check
+	h.eng.feeds.urls = feedURLs{} // and so would the reference feeds
 	h.eng.newScanner = func(cfg *Config, res *Resolver) *Scanner {
 		sc := NewScanner(cfg, log, store, res)
 		sc.disc.urls = h.src.urls()
@@ -501,6 +502,9 @@ func newHarness(t testing.TB) *harness {
 	st.DNSQPS, st.DNSTimeoutSeconds, st.DNSRetries, st.DNSWorkers = 2000, 1, 1, 8
 	st.ASNBGPViewFallback = false
 	st.AnubisEnabled = true // off by default (the live service blocks bots); the fake one feeds most scan tests
+	// Keyless sources added in v1.9.8 would reach the real internet; tests that need them switch them on against fakes.
+	st.CertSpotterEnabled, st.URLScanEnabled, st.WaybackEnabled, st.DNSOverHTTPS = false, false, false, false
+	st.ISCEnabled, st.EPSSEnabled, st.KEVEnabled, st.TorExitEnabled, st.CloudRangesEnabled, st.TakeoverFeedEnabled = false, false, false, false, false, false
 	st.DigestFrequency = "off"
 	st.CrtShMaxAttempts = 2
 	st.SMTPEnabled, st.SMTPHost, st.SMTPPort, st.SMTPSecurity = true, "127.0.0.1", h.smtp.port(), "none"
