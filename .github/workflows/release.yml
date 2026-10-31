@@ -8,6 +8,13 @@ name: Release
 # publishes a pre-release. Agents never update to pre-releases (update.go), so an RC
 # reaches only machines it is installed on by hand for UAT. A vX.Y.Z tag runs in the
 # Production environment, which waits for the owner's approval before the job starts.
+#
+# The lifecycle:
+#   vX.Y.Z-rc.N  -> build, sign, publish pre-release -> UAT jobs test that published build
+#                   (full test gate, SAST, DAST, the UAT scripts, upgrade and service tests).
+#                   The run is green only if every UAT job passes.
+#   vX.Y.Z       -> "UAT passed" checks for a green RC run on the same commit, then the
+#                   Production environment waits for approval, then build, sign, publish.
 on:
   push:
     tags: ["v[0-9]+.[0-9]+.[0-9]+", "v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"]
@@ -16,8 +23,33 @@ permissions:
   contents: read
 
 jobs:
+  uat-passed:
+    name: UAT passed for this commit
+    if: ${{ !contains(github.ref_name, '-rc.') }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read # read the RC's workflow runs
+    steps:
+      - name: Require a release candidate of this version, on this commit, whose UAT passed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+        run: |
+          runs=$(gh api "repos/$REPO/actions/workflows/release.yml/runs?head_sha=$SHA&status=success&per_page=100" \
+            --jq "[.workflow_runs[] | select(.head_branch | startswith(\"$TAG-rc.\")) | .head_branch] | unique | join(\" \")")
+          if [ -z "$runs" ]; then
+            echo "::error::No release candidate ${TAG}-rc.N on ${SHA} has passed UAT. Tag one on this commit and let its Release run go green first."
+            exit 1
+          fi
+          echo "UAT passed on this commit as: $runs"
+
   release:
     name: Build, sign and publish
+    needs: uat-passed
+    # Runs for an RC (uat-passed is skipped) and for a release whose UAT passed.
+    if: ${{ !failure() && !cancelled() }}
     runs-on: ubuntu-latest
     environment: ${{ contains(github.ref_name, '-rc.') && 'UAT' || 'Production' }}
     permissions:
@@ -77,3 +109,179 @@ jobs:
         run: |
           pre=""; case "$TAG" in *-rc.*) pre="--prerelease" ;; esac
           gh release create "$TAG" dist/* --verify-tag $pre --title "EASM Agent ${VERSION}" --generate-notes
+
+  # ---- UAT: runs only for an RC, against the commit and the build it just published ----
+
+  uat-gate:
+    name: "UAT: full test gate"
+    needs: release
+    if: ${{ contains(github.ref_name, '-rc.') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # full history for the secret scan
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: stable
+          check-latest: true
+          cache: true
+
+      - name: Format and vet
+        run: |
+          test -z "$(gofmt -l .)" || { gofmt -l .; echo "gofmt: the files above need formatting"; exit 1; }
+          go vet ./...
+
+      - name: Install golangci-lint and Gitleaks (checksum-verified releases)
+        env:
+          GOLANGCI_LINT_VERSION: "2.15.0"
+          GOLANGCI_LINT_SHA256: "9b7fe6a6bf6334b98decf8d86b11415ea7889afdabdd1959fdce23af2a9ebcea"
+          GITLEAKS_VERSION: "8.30.1"
+          GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+        run: |
+          archive="golangci-lint-${GOLANGCI_LINT_VERSION}-linux-amd64"
+          curl -sSfL -o "$RUNNER_TEMP/golangci-lint.tar.gz" \
+            "https://github.com/golangci/golangci-lint/releases/download/v${GOLANGCI_LINT_VERSION}/${archive}.tar.gz"
+          echo "${GOLANGCI_LINT_SHA256}  $RUNNER_TEMP/golangci-lint.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/golangci-lint.tar.gz" -C "$RUNNER_TEMP" --strip-components=1 "${archive}/golangci-lint"
+          curl -sSfL -o "$RUNNER_TEMP/gitleaks.tar.gz" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP" gitleaks
+
+      - name: Lint (Linux and Windows code)
+        run: |
+          "$RUNNER_TEMP/golangci-lint" run ./...
+          GOOS=windows "$RUNNER_TEMP/golangci-lint" run ./...
+
+      - name: Tests, race detector, three times over (flakiness and stress)
+        env:
+          CGO_ENABLED: "1"
+        run: go test -race -count=3 -timeout 60m ./...
+
+      - name: Fuzz every target for 30s
+        run: |
+          for t in $(go test -list '^Fuzz' . | grep '^Fuzz'); do
+            echo "== $t"
+            go test -run '^$' -fuzz "^${t}\$" -fuzztime 30s .
+          done
+
+      - name: Dependency scan (govulncheck)
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+      - name: Secret scan (full history)
+        run: '"$RUNNER_TEMP/gitleaks" git --config .gitleaks.toml --redact --exit-code 1 .'
+
+  uat-sast:
+    name: "UAT: static analysis (Semgrep)"
+    needs: release
+    if: ${{ contains(github.ref_name, '-rc.') }}
+    runs-on: ubuntu-latest
+    container: semgrep/semgrep:1.182.1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Run Semgrep on the whole code base
+        run: >-
+          semgrep scan --error --metrics=off
+          --config p/default --config p/golang --config p/secrets --config p/owasp-top-ten
+          --exclude web/static .
+
+  uat-dast:
+    name: "UAT: dynamic scan (ZAP) of the published Linux build"
+    needs: release
+    if: ${{ contains(github.ref_name, '-rc.') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: stable
+          check-latest: true
+
+      - name: Download the pre-release and verify its signature
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release download "$TAG" -D dist
+          go run ./tools/release verify -dir dist
+          chmod +x dist/easm-agent-linux-amd64
+          dist/easm-agent-linux-amd64 -version | grep -qx "easm-agent ${TAG#v}"
+
+      - name: Start the agent on a throwaway data folder
+        run: |
+          mkdir -p "$RUNNER_TEMP/data"
+          EASM_KEY_PASSPHRASE="$(openssl rand -hex 24)" nohup dist/easm-agent-linux-amd64 \
+            -data-dir "$RUNNER_TEMP/data" -listen 127.0.0.1:8080 -plain-http -no-browser > "$RUNNER_TEMP/agent.log" 2>&1 &
+          for i in $(seq 60); do curl -sf http://127.0.0.1:8080/healthz && exit 0; sleep 1; done
+          cat "$RUNNER_TEMP/agent.log"; exit 1
+
+      - name: ZAP baseline scan (fails on any medium or high alert)
+        run: |
+          mkdir -p zap && chmod 777 zap
+          docker run --rm --network host -v "$PWD/zap:/zap/wrk:rw" ghcr.io/zaproxy/zaproxy:2.17.0 \
+            zap-baseline.py -t http://127.0.0.1:8080 -J zap.json -r zap.html -I
+          jq -r '.site[].alerts[] | "\(.riskdesc)  \(.name)"' zap/zap.json | sort -u
+          bad=$(jq '[.site[].alerts[] | select((.riskcode | tonumber) >= 2)] | length' zap/zap.json)
+          [ "$bad" -eq 0 ] || { echo "::error::ZAP found $bad medium or high alert(s)"; exit 1; }
+
+      - name: Keep the ZAP report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: zap-report
+          path: zap/
+          if-no-files-found: ignore
+
+  uat-windows:
+    name: "UAT: user acceptance, upgrade and service tests (Windows)"
+    needs: release
+    if: ${{ contains(github.ref_name, '-rc.') }}
+    runs-on: windows-latest # elevated, so the service test can install a real service
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: stable
+          check-latest: true
+          cache: true
+
+      - name: Download the pre-release, verify it, and fetch the current production release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release download $env:TAG -D dist
+          go run ./tools/release verify -dir dist
+          if ($LASTEXITCODE) { exit 1 }
+          $v = (& .\dist\easm-agent-windows-amd64.exe -version) -join ' '
+          if ($v -ne "easm-agent $($env:TAG.TrimStart('v'))") { throw "the RC reports '$v'" }
+          $prev = gh release view --json tagName --jq .tagName # latest non-pre-release
+          gh release download $prev -p 'easm-agent-windows-amd64.exe' -D prev
+          "Upgrade test from $prev"
+
+      - name: UAT suite (lab scans, evidence, corroboration, upgrade, Windows service)
+        shell: pwsh
+        env:
+          UAT_OUT: ${{ runner.temp }}\uat
+        run: .\uat\run.ps1 -Exe .\dist\easm-agent-windows-amd64.exe -PreviousExe .\prev\easm-agent-windows-amd64.exe
+
+      - name: Keep the UAT results (no credentials)
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: uat-results
+          path: |
+            ${{ runner.temp }}\uat\*-results.csv
+            ${{ runner.temp }}\uat\lab.log
+            ${{ runner.temp }}\uat\lab.err
+          if-no-files-found: ignore

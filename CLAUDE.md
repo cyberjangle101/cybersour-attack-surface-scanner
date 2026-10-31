@@ -72,6 +72,8 @@ Fuzz targets are in `fuzz_test.go`. Any new parser or input handler (DNS, HTTP, 
 ### UAT (user acceptance): do this for every change that touches behaviour
 
 Use a throwaway data dir (`-data-dir $(mktemp -d)`) and a test domain. Do not point it at real targets without my say-so.
+The automated suite is `uat\run.ps1 -Exe <exe> [-PreviousExe <exe>] [-SkipService]` (Windows; the service step needs an
+elevated prompt). It starts the `uat_lab_test.go` lab itself. Run it locally before committing a behaviour change.
 Walk the flow as a user would, with a headless browser (Playwright) or the existing `uat_lab_test.go` lab:
 
 1. First start: create the key and the admin account, sign in, and see the welcome guide.
@@ -112,9 +114,17 @@ Every change goes to the UAT environment first, and reaches production only afte
 1. UAT: after the PR merges, tag `vX.Y.Z-rc.N` (N from 1) on the merge commit and push the tag. The release workflow runs in
    the GitHub `UAT` environment (it only accepts `v*.*.*-rc.*` tags) and publishes a signed pre-release.
    Installed agents never update to pre-releases, so no user receives it.
-2. Test that RC build, not a local build: `go run ./tools/release verify -dir`, the exe's `-version`, the UAT steps (gate 9),
-   and `service-test.ps1` (I run it elevated) when service or install code changed. Report the results to me.
-3. Production: only when UAT passes and I agree, tag `vX.Y.Z` on the same commit as the passing RC and push it. The workflow
+2. The same run then tests that published build automatically (the `UAT:` jobs in `release.yml`):
+   - full test gate: gofmt, vet, lint (Linux and Windows), `go test -race -count=3`, every fuzz target for 30s,
+     govulncheck, Gitleaks
+   - Semgrep over the whole code base
+   - ZAP baseline against the Linux build (fails on any medium or high alert)
+   - Windows, against the signed RC exe: `uat\run.ps1`, which runs the lab UAT scripts (scan, evidence, trust),
+     the upgrade test from the current production release, and the service install test.
+   Watch the run (`gh run watch`) and report each job's result to me. A red job means UAT failed.
+   Add or update a `uat\*.ps1` check for every change in behaviour, in the same PR as the change.
+3. Production: only when UAT passes and I agree, tag `vX.Y.Z` on the same commit as the passing RC and push it. Its first job,
+   "UAT passed for this commit", stops the release unless a `vX.Y.Z-rc.N` run on that commit is green. Then the workflow
    runs in the GitHub `Production` environment (only `v*.*.*` tags) and waits for my approval in Actions; never try to approve
    it or work around it. After I approve and it publishes, check the signature, `-version`, and that the previous release
    offers the update.

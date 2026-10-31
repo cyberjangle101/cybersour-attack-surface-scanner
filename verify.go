@@ -123,8 +123,8 @@ const recheckAfter = 7 * 24 * time.Hour
 
 // Why confirmOpenPorts runs.
 const (
-	confirmFirstScan = "first scan"     // the "Confirm open ports" box when the domain was added: every open port
-	confirmAuto      = "corroboration"  // after a scan with active checks on: unconfirmed ports only
+	confirmFirstScan = "first scan"    // the "Confirm open ports" box when the domain was added: every open port
+	confirmAuto      = "corroboration" // after a scan with active checks on: unconfirmed ports only
 )
 
 // confirmOpenPorts runs checkService on open exposed-service findings of a

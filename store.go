@@ -1100,7 +1100,7 @@ func (s *Store) ListEvents(f EventFilter) ([]Event, int, error) {
 // Stats holds the dashboard counters.
 type Stats struct {
 	Targets, Enabled, Hosts, OpenFindings, HighFindings, Events24h, PendingEvents, Running int
-	UnconfirmedFindings                                                                  int // open, from one third-party source only: not in OpenFindings
+	UnconfirmedFindings                                                                    int // open, from one third-party source only: not in OpenFindings
 }
 
 // Stats computes the dashboard counters.

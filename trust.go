@@ -113,7 +113,9 @@ func updateTrust(db sqlRunner, key, current string) (level string, upgraded bool
 }
 
 // UpdateTrust is updateTrust inside a scan's transaction.
-func (t *Tx) UpdateTrust(key, current string) (string, bool, error) { return updateTrust(t.tx, key, current) }
+func (t *Tx) UpdateTrust(key, current string) (string, bool, error) {
+	return updateTrust(t.tx, key, current)
+}
 
 // backfillTrust gives findings stored by an earlier version their trust level.
 func backfillTrust(db *sql.DB) error {
