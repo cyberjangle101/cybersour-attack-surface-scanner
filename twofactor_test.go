@@ -81,7 +81,8 @@ func TestTwoFactorFlow(t *testing.T) {
 	if u, _ := e.store.FindUserFold("tina"); u.TOTPOn {
 		t.Fatal("enabled with a wrong code")
 	}
-	b.post("/account/2fa/enable", url.Values{"code": {codeNow(t, secret)}})
+	enrolCode := codeNow(t, secret)
+	b.post("/account/2fa/enable", url.Values{"code": {enrolCode}})
 	u, _ := e.store.FindUserFold("tina")
 	if !u.TOTPOn || u.TOTPSecret != secret {
 		t.Fatal("not enabled")
@@ -123,8 +124,9 @@ func TestTwoFactorFlow(t *testing.T) {
 	if c, _ := login("123456"); c != 401 {
 		t.Errorf("wrong code: %d", c)
 	}
-	good := codeNow(t, secret)
-	if c, _ := login(good); c != 401 { // that step was already used when enabling
+	// Replay the enrolment code itself: recomputing it here could land in the next 30s step,
+	// a fresh code that is rightly accepted.
+	if c, _ := login(enrolCode); c != 401 { // that step was already used when enabling
 		t.Errorf("a code used at enrolment worked again: %d", c)
 	}
 	// recovery code works once
