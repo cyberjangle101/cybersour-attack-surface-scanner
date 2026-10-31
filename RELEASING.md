@@ -58,6 +58,8 @@ key, and publish a release. Agents still on the old key need that release instal
    git push origin vX.Y.Z
    ```
 
+   This run uses the `Production` environment, so it waits until the owner approves it
+   under Actions ("Review deployments").
 4. For either tag, the Release workflow:
    - checks that README mentions the version, and runs the tests;
    - builds `easm-agent-windows-amd64.exe`, `easm-agent-linux-amd64` and `easm-agent-linux-arm64`

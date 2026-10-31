@@ -114,8 +114,10 @@ Every change goes to the UAT environment first, and reaches production only afte
    Installed agents never update to pre-releases, so no user receives it.
 2. Test that RC build, not a local build: `go run ./tools/release verify -dir`, the exe's `-version`, the UAT steps (gate 9),
    and `service-test.ps1` (I run it elevated) when service or install code changed. Report the results to me.
-3. Production: only when UAT passes and I agree, tag `vX.Y.Z` on the same commit as the passing RC and push it. Then check the
-   signature, `-version`, and that the previous release offers the update.
+3. Production: only when UAT passes and I agree, tag `vX.Y.Z` on the same commit as the passing RC and push it. The workflow
+   runs in the GitHub `Production` environment (only `v*.*.*` tags) and waits for my approval in Actions; never try to approve
+   it or work around it. After I approve and it publishes, check the signature, `-version`, and that the previous release
+   offers the update.
 4. If UAT fails, do not tag production. Fix it in a new PR, merge, and tag the next `-rc.N+1`.
    Never tag `vX.Y.Z` on a commit with no passing RC.
 - Installed agents self-update from those releases (`update.go`): never weaken the signature, version-header or GitHub-host checks.

@@ -6,7 +6,8 @@ name: Release
 #
 # A release candidate tag vX.Y.Z-rc.N runs the same build in the UAT environment and
 # publishes a pre-release. Agents never update to pre-releases (update.go), so an RC
-# reaches only machines it is installed on by hand for UAT.
+# reaches only machines it is installed on by hand for UAT. A vX.Y.Z tag runs in the
+# Production environment, which waits for the owner's approval before the job starts.
 on:
   push:
     tags: ["v[0-9]+.[0-9]+.[0-9]+", "v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"]
@@ -18,7 +19,7 @@ jobs:
   release:
     name: Build, sign and publish
     runs-on: ubuntu-latest
-    environment: ${{ contains(github.ref_name, '-rc.') && 'UAT' || '' }}
+    environment: ${{ contains(github.ref_name, '-rc.') && 'UAT' || 'Production' }}
     permissions:
       contents: write # create the release
     steps:
