@@ -2,7 +2,7 @@
 
 A lightweight, single-binary agent for continuous **External Attack Surface Management (EASM)**. It runs as a persistent background service on Windows or Linux, watches the internet-facing footprint of the organisations you tell it about, and emails you only when something **changes**.
 
-> **Status:** v1.9.8. See "What's new in 1.9" below. Every check the agent runs is listed in [docs/RULES.md](docs/RULES.md).
+> **Status:** v1.9.9. See "What's new in 1.9" below. Every check the agent runs is listed in [docs/RULES.md](docs/RULES.md).
 
 ## Why
 
@@ -52,6 +52,12 @@ are emailed only about new subdomains, new IP/DNS records, new certificates and 
 * **Users:** admin, analyst and read-only viewer roles; local accounts with optional two-factor sign-in, or Active Directory sign-in (see *What's new in 1.6*).
 
 ## What's new in 1.9
+
+**v1.9.9 (every release is tested before it reaches you):**
+
+* Each release is first published as a release candidate (a GitHub pre-release, which agents never update to) and tested automatically. That testing covers the full test suite with the race detector, fuzzing, static and dependency scans, a ZAP scan of the running agent, the end-to-end UAT suite, an upgrade from the previous release, and a Windows service install.
+* A release only reaches the Releases page, and so the agent's update check, once that candidate has passed on the same code and the maintainer has approved it.
+* No change to how the agent behaves.
 
 **v1.9.8 (more free sources, for redundancy and accuracy):**
 
