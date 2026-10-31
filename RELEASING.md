@@ -41,14 +41,26 @@ key, and publish a release. Agents still on the old key need that release instal
 
 1. On a `feat/vX.Y.Z` or `fix/...` branch: update the version in README ("Status" and
    "What's new in X.Y"), pass the full gate in `CLAUDE.md`, and merge the PR.
-2. Tag the merge commit on `main` and push the tag:
+2. UAT first: tag the merge commit on `main` as a release candidate and push it:
+
+   ```
+   git tag -a vX.Y.Z-rc.1 -m "EASM Agent X.Y.Z-rc.1"
+   git push origin vX.Y.Z-rc.1
+   ```
+
+   The workflow runs in the `UAT` environment and publishes a pre-release, which installed
+   agents never update to. Install it by hand on a UAT machine and run the UAT checks in
+   `CLAUDE.md`. If it fails, fix it in a new PR and tag `-rc.2`.
+3. Production: once the RC passes UAT, tag the same commit as the release and push it:
 
    ```
    git tag -a vX.Y.Z -m "EASM Agent X.Y.Z"
    git push origin vX.Y.Z
    ```
 
-3. The Release workflow then:
+   This run uses the `Production` environment, so it waits until the owner approves it
+   under Actions ("Review deployments").
+4. For either tag, the Release workflow:
    - checks that README mentions the version, and runs the tests;
    - builds `easm-agent-windows-amd64.exe`, `easm-agent-linux-amd64` and `easm-agent-linux-arm64`
      with the newest Go toolchain and `-X main.version=X.Y.Z`;

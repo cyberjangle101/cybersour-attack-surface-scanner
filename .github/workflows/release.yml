@@ -3,9 +3,14 @@ name: Release
 # Pushing a tag vX.Y.Z builds the binaries, signs their checksums and publishes a
 # GitHub release. Running agents find it with their update check and verify the
 # signature against the public key in release_key.go before installing anything.
+#
+# A release candidate tag vX.Y.Z-rc.N runs the same build in the UAT environment and
+# publishes a pre-release. Agents never update to pre-releases (update.go), so an RC
+# reaches only machines it is installed on by hand for UAT. A vX.Y.Z tag runs in the
+# Production environment, which waits for the owner's approval before the job starts.
 on:
   push:
-    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+    tags: ["v[0-9]+.[0-9]+.[0-9]+", "v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"]
 
 permissions:
   contents: read
@@ -14,6 +19,7 @@ jobs:
   release:
     name: Build, sign and publish
     runs-on: ubuntu-latest
+    environment: ${{ contains(github.ref_name, '-rc.') && 'UAT' || 'Production' }}
     permissions:
       contents: write # create the release
     steps:
@@ -32,7 +38,8 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           echo "VERSION=${TAG#v}" >> "$GITHUB_ENV"
-          grep -q "v${TAG#v}" README.md || { echo "README.md does not mention v${TAG#v} (update What's new and Status first)"; exit 1; }
+          BASE=${TAG%%-*} # an RC is checked against the release it leads to
+          grep -q "${BASE}" README.md || { echo "README.md does not mention ${BASE} (update What's new and Status first)"; exit 1; }
 
       - name: Tests
         run: go test -count=1 ./...
@@ -68,4 +75,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
-          gh release create "$TAG" dist/* --verify-tag --title "EASM Agent ${VERSION}" --generate-notes
+          pre=""; case "$TAG" in *-rc.*) pre="--prerelease" ;; esac
+          gh release create "$TAG" dist/* --verify-tag $pre --title "EASM Agent ${VERSION}" --generate-notes
