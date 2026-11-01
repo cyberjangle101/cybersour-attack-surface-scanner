@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -21,11 +20,13 @@ import (
 func (e *Enricher) iscHost(ctx context.Context, ip string) (*IPIntel, error) {
 	var r struct {
 		IP struct {
-			Count       flexInt                    `json:"count"`
-			Attacks     flexInt                    `json:"attacks"`
-			MaxDate     string                     `json:"maxdate"`
-			ASName      string                     `json:"asname"`
-			ThreatFeeds map[string]json.RawMessage `json:"threatfeeds"`
+			Count       flexInt `json:"count"`
+			Attacks     flexInt `json:"attacks"` // distinct DShield sensors it reached
+			MaxDate     string  `json:"maxdate"`
+			ASName      string  `json:"asname"`
+			ThreatFeeds map[string]struct {
+				LastSeen string `json:"lastseen"`
+			} `json:"threatfeeds"`
 		} `json:"ip"`
 	}
 	raw, err := e.getJSONRaw(ctx, e.urls.isc+url.PathEscape(ip)+"?json", nil, &r)
@@ -36,28 +37,52 @@ func (e *Enricher) iscHost(ctx context.Context, ip string) (*IPIntel, error) {
 		return nil, err
 	}
 	in := &IPIntel{IP: ip, Source: "isc", Org: truncate(r.IP.ASName, 80), Raw: raw}
+	now := time.Now()
+	flagged := false
+	// Reports are always kept as evidence, but only flag the address when they are recent and
+	// numerous: shared infrastructure (CDN, mail and VPN egress, recycled cloud addresses)
+	// collects a few stray reports over the years, while a compromised host scanning the
+	// internet reaches many sensors within days.
 	if n := max(int(r.IP.Count), int(r.IP.Attacks)); n > 0 {
-		in.Tags = append(in.Tags, "isc-attacker", "isc-reports:"+strconv.Itoa(n))
+		in.Tags = append(in.Tags, "isc-reports:"+strconv.Itoa(n))
 		if r.IP.MaxDate != "" {
 			in.Tags = append(in.Tags, "isc-last:"+truncate(r.IP.MaxDate, 10))
 		}
+		flagged = iscRecentDate(r.IP.MaxDate, now) && int(r.IP.Attacks) >= iscMinTargets
 	}
 	feeds := make([]string, 0, len(r.IP.ThreatFeeds))
-	listed := false
-	for name := range r.IP.ThreatFeeds {
+	for name, f := range r.IP.ThreatFeeds {
 		n := truncate(strings.ToLower(name), 40)
 		feeds = append(feeds, "isc-feed:"+n)
-		if label, bad := iscCompromisedFeeds[n]; bad {
+		if label, bad := iscCompromisedFeeds[n]; bad && iscRecentDate(f.LastSeen, now) {
 			feeds = append(feeds, "isc-listed:"+label)
-			listed = true
+			flagged = true
 		}
 	}
 	sort.Strings(feeds)
 	in.Tags = append(in.Tags, feeds...)
-	if listed && !hasTag(in.Tags, "isc-attacker") {
+	if flagged {
 		in.Tags = append(in.Tags, "isc-attacker")
 	}
 	return in, nil
+}
+
+// iscRecent is how fresh a SANS ISC report or listing must be to count: addresses change hands,
+// and a listing from years ago says nothing about who uses the address now.
+const iscRecent = 30 * 24 * time.Hour
+
+// iscMinTargets is how many distinct DShield sensors an address must have reached before its
+// reports flag it (GitHub Pages, for one, has a few dozen over five years).
+const iscMinTargets = 100
+
+// iscRecentDate reports whether an ISC date (YYYY-MM-DD, possibly with a time) is within iscRecent.
+// A missing or unreadable date is not recent: an undated listing cannot show the address is bad now.
+func iscRecentDate(s string, now time.Time) bool {
+	if len(s) < 10 {
+		return false
+	}
+	d, err := time.Parse("2006-01-02", s[:10])
+	return err == nil && now.Sub(d) <= iscRecent && d.Before(now.Add(48*time.Hour))
 }
 
 // iscCompromisedFeeds are the threat feeds ISC aggregates that list hosts seen acting

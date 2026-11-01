@@ -183,7 +183,6 @@ func renderRules() string {
 	w("### Look-alike techniques (EASM-BRAND-001)\n\n")
 	w("Variations are generated locally and only looked up in DNS:\n\n")
 	w("* typos: a missing, repeated or swapped letter, a neighbouring key (QWERTY), a changed vowel, an added hyphen\n")
-	w("* bitsquatting: one bit different in a letter\n")
 	var gl []string
 	for _, g := range glyphs {
 		gl = append(gl, g[0]+"→"+g[1])

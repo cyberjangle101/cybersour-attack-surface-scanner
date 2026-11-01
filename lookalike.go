@@ -25,6 +25,20 @@ var glyphs = [][2]string{{"o", "0"}, {"l", "1"}, {"l", "i"}, {"i", "1"}, {"i", "
 // cyrillic letters that look like Latin ones.
 var confusable = map[rune]rune{'a': 'а', 'c': 'с', 'e': 'е', 'o': 'о', 'p': 'р', 'x': 'х', 'y': 'у', 'i': 'і', 's': 'ѕ', 'j': 'ј'}
 
+// parkingNS are the name-server domains of parking and resale services. A variation served there is
+// parked or for sale, not set up to imitate anyone, so it is not reported (it is once it moves away).
+var parkingNS = map[string]bool{
+	"sedoparking.com": true, "parkingcrew.net": true, "bodis.com": true, "abovedomains.com": true, "above.com": true,
+	"afternic.com": true, "dan.com": true, "undeveloped.com": true, "hugedomains.com": true, "parklogic.com": true,
+	"namebrightdns.com": true, "namepros-dns.com": true, "atom.com": true, "brandbucket.com": true, "cashparking.com": true,
+}
+
+// isParkingNS reports whether a name server belongs to a parking or resale service.
+func isParkingNS(host string) bool {
+	e, err := publicsuffix.EffectiveTLDPlusOne(strings.TrimSuffix(host, "."))
+	return err == nil && parkingNS[e]
+}
+
 var affixes = []string{"login", "secure", "support", "portal", "online", "mail", "account", "verify", "pay", "my", "app", "help"}
 var otherTLDs = []string{"com", "net", "org", "co", "io", "app", "info", "biz", "online", "shop", "xyz", "site", "support", "cloud", "dev"}
 
@@ -91,16 +105,8 @@ func genLookalikes(root string, limit int) []lookalike {
 				}
 			}
 		}
-		c := byte(rs[i])
-		if rs[i] < 128 {
-			for bit := 0; bit < 8; bit++ {
-				f := c ^ (1 << bit)
-				if f >= 'A' && f <= 'Z' {
-					f += 32
-				}
-				add("one bit different", string(rs[:i])+string(rune(f))+string(rs[i+1:]))
-			}
-		}
+		// No bitsquatting (one bit different): those names model memory errors, not people being
+		// misled, and on short names they are mostly unrelated words that someone owns legitimately.
 		if cy, ok := confusable[rs[i]]; ok {
 			u := string(rs[:i]) + string(cy) + string(rs[i+1:])
 			if a, err := idna.Lookup.ToASCII(u); err == nil && a != u {
@@ -131,7 +137,7 @@ func genLookalikes(root string, limit int) []lookalike {
 	}
 	// round-robin across the kinds, most convincing first
 	order := []string{"swapped letters", "missing letter", "repeated letter", "similar-looking characters", "look-alike letter", "other ending",
-		"neighbouring key", "hyphen added", "added word", "changed vowel", "one bit different"}
+		"neighbouring key", "hyphen added", "added word", "changed vowel"}
 	seen := map[string]bool{root: true}
 	var out []lookalike
 	for round := 0; len(out) < limit; round++ {

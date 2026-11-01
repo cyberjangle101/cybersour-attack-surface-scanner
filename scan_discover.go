@@ -103,10 +103,19 @@ func (s *Scanner) lookalikes(ctx context.Context, t *Target, results map[string]
 			own[o.Domain] = true
 		}
 	}
-	myNS := map[string]bool{}
+	me := lookOwner{root: root, ns: map[string]bool{}, ips: map[string]bool{}}
 	if hr := results[root]; hr != nil {
 		for _, n := range hr.Records["NS"] {
-			myNS[cleanName(n)] = true
+			me.ns[cleanName(n)] = true
+		}
+	}
+	for _, h := range []string{root, "www." + root} {
+		if hr := results[h]; hr != nil {
+			for _, ip := range append(append([]string(nil), hr.Records["A"]...), hr.Records["AAAA"]...) {
+				if c, ok := s.feeds.Cloud(ip); !ok || !c.CDN { // a CDN edge is shared by thousands of sites
+					me.ips[ip] = true
+				}
+			}
 		}
 	}
 	d.lookChecked = map[string]bool{}
@@ -119,7 +128,7 @@ func (s *Scanner) lookalikes(ctx context.Context, t *Target, results map[string]
 		go func() {
 			defer wg.Done()
 			for c := range jobs {
-				hit, known := s.checkLookalike(ctx, c, myNS)
+				hit, known := s.checkLookalike(ctx, c, me)
 				mu.Lock()
 				if known {
 					d.lookChecked[c.Domain] = true
@@ -149,8 +158,18 @@ feed:
 	sort.Slice(d.lookHits, func(i, j int) bool { return d.lookHits[i].Domain < d.lookHits[j].Domain })
 }
 
-// checkLookalike reports whether a variation is registered. known=false means DNS could not tell.
-func (s *Scanner) checkLookalike(ctx context.Context, c lookalike, myNS map[string]bool) (hit *lookalikeHit, known bool) {
+// lookOwner is the target's own DNS, used to recognise variations it registered itself.
+type lookOwner struct {
+	root string
+	ns   map[string]bool // the target's name servers
+	ips  map[string]bool // addresses of the root and www, CDN edges left out
+}
+
+// checkLookalike reports whether a variation is registered by someone else and usable against the
+// target (it accepts email or has a web address). known=false means DNS could not tell.
+// Not reported, though known: unregistered names, the target's own (defensive) registrations,
+// names parked or for sale, and names with neither mail nor web, which cannot be used as they stand.
+func (s *Scanner) checkLookalike(ctx context.Context, c lookalike, me lookOwner) (hit *lookalikeHit, known bool) {
 	in, err := s.res.query(ctx, c.Domain, dns.TypeNS)
 	if err != nil {
 		return nil, false
@@ -162,9 +181,16 @@ func (s *Scanner) checkLookalike(ctx context.Context, c lookalike, myNS map[stri
 	if len(ns) == 0 {
 		return nil, true
 	}
-	same := len(ns) > 0
+	same := true
 	for _, n := range ns {
-		if !myNS[cleanName(n)] {
+		n = cleanName(n)
+		if dns.IsSubDomain(me.root, n) {
+			return nil, true // its name servers are under the target's domain
+		}
+		if isParkingNS(n) {
+			return nil, true // parked or for sale
+		}
+		if !me.ns[n] {
 			same = false
 		}
 	}
@@ -173,10 +199,29 @@ func (s *Scanner) checkLookalike(ctx context.Context, c lookalike, myNS map[stri
 	}
 	h := &lookalikeHit{Domain: c.Domain, Kind: c.Kind}
 	if mx, err := s.res.query(ctx, c.Domain, dns.TypeMX); err == nil {
-		h.MX = len(collectRRs(mx, c.Domain, dns.TypeMX)) > 0
+		for _, m := range collectRRs(mx, c.Domain, dns.TypeMX) {
+			_, host, _ := strings.Cut(m, " ") // "10 mx.example.net"
+			if host = strings.TrimSpace(host); host == "" || host == "." {
+				continue // null MX (RFC 7505): it explicitly accepts no email
+			}
+			if dns.IsSubDomain(me.root, host) {
+				return nil, true // its mail goes to the target's own servers
+			}
+			h.MX = true
+		}
 	}
-	if a, err := s.res.query(ctx, c.Domain, dns.TypeA); err == nil {
-		h.Web = len(collectRRs(a, c.Domain, dns.TypeA)) > 0
+	for _, qt := range []uint16{dns.TypeA, dns.TypeAAAA} {
+		if a, err := s.res.query(ctx, c.Domain, qt); err == nil {
+			for _, ip := range collectRRs(a, c.Domain, qt) {
+				if me.ips[ip] {
+					return nil, true // it points at the target's own web server (typically a redirect)
+				}
+				h.Web = true
+			}
+		}
+	}
+	if !h.MX && !h.Web {
+		return nil, true // registered but neither mail nor web: nothing to act on yet
 	}
 	return h, true
 }
@@ -189,14 +234,12 @@ func (h lookalikeHit) severity() string {
 }
 
 func (h lookalikeHit) detail(root string) string {
-	use := "It has name servers but no web or mail address."
+	use := "It has a web address."
 	switch {
 	case h.MX && h.Web:
 		use = "It has a web address and accepts email."
 	case h.MX:
 		use = "It accepts email."
-	case h.Web:
-		use = "It has a web address."
 	}
 	return fmt.Sprintf("%s is registered and looks like %s (%s). %s It is not served by your name servers. Nothing here shows who owns it or that it is malicious.", h.Domain, root, h.Kind, use)
 }

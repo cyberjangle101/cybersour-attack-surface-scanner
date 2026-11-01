@@ -320,7 +320,8 @@ func intelLab(t *testing.T) (*harness, *feedServer) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/isc/", func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.URL.Path, "203.0.113.10") {
-			_, _ = io.WriteString(w, `{"ip":{"number":"203.0.113.10","count":"12","attacks":7,"maxdate":"2026-10-20","asname":"EXAMPLE","threatfeeds":{"ciarmy":{"lastseen":"2026-10-20"}}}}`)
+			recent := time.Now().AddDate(0, 0, -5).Format("2006-01-02")
+			_, _ = io.WriteString(w, `{"ip":{"number":"203.0.113.10","count":"12","attacks":7,"maxdate":"`+recent+`","asname":"EXAMPLE","threatfeeds":{"ciarmy":{"lastseen":"`+recent+`"}}}}`)
 			return
 		}
 		_, _ = io.WriteString(w, `{"ip":{"count":null,"attacks":null}}`)
@@ -365,7 +366,7 @@ func TestFreeIntelInScans(t *testing.T) {
 	}
 	open := h.findingsOf("open")
 	flag := open["flag:203.0.113.10"]
-	if flag.Kind != "ip-flagged" || !strings.Contains(flag.Detail, "SANS ISC has 12 report(s)") || flag.Trust != trustTrusted {
+	if flag.Kind != "ip-flagged" || !strings.Contains(flag.Detail, "SANS ISC has 12 report(s)") || flag.Trust != trustTrusted || flag.Severity != "high" {
 		t.Errorf("Shodan tag + SANS ISC must give a trusted flag: %+v", flag)
 	}
 	vuln := open["vuln:203.0.113.10"]
@@ -426,31 +427,72 @@ func TestTakeoverFingerprints(t *testing.T) {
 }
 
 func TestISCSignals(t *testing.T) {
+	day := func(ago int) string { return time.Now().AddDate(0, 0, -ago).Format("2006-01-02") }
+	answers := map[string]string{
+		// only Tor and spam feeds: evidence, not a flag
+		"198.51.100.1": `{"ip":{"count":null,"attacks":null,"threatfeeds":{"torexit":{"lastseen":"` + day(1) + `"},"forumspam":{}}}}`,
+		// a compromised-host feed listing from this week: a flag
+		"198.51.100.2": `{"ip":{"count":"0","attacks":"","threatfeeds":{"emergincompromised":{"lastseen":"` + day(3) + `"}}}}`,
+		// the same feed, but last seen years ago (the address has likely changed hands): evidence only
+		"198.51.100.3": `{"ip":{"threatfeeds":{"ciarmy":{"lastseen":"2017-10-14"}}}}`,
+		// an undated listing cannot show the address is bad now
+		"198.51.100.4": `{"ip":{"threatfeeds":{"ciarmy":{}}}}`,
+		// a few recent reports, as shared infrastructure collects: evidence only
+		"198.51.100.5": `{"ip":{"count":186,"attacks":49,"maxdate":"` + day(12) + `"}}`,
+		// many sensors, recently: a host scanning the internet, a flag
+		"198.51.100.6": `{"ip":{"count":5400,"attacks":"812","maxdate":"` + day(2) + `"}}`,
+		// many sensors, but long ago: evidence only
+		"198.51.100.7": `{"ip":{"count":5400,"attacks":812,"maxdate":"2021-03-01"}}`,
+	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case strings.Contains(r.URL.Path, "/198.51.100.1"): // only Tor and spam feeds: evidence, not a flag
-			_, _ = io.WriteString(w, `{"ip":{"count":null,"attacks":null,"threatfeeds":{"torexit":{},"forumspam":{}}}}`)
-		case strings.Contains(r.URL.Path, "/198.51.100.2"): // a compromised-host feed: a flag
-			_, _ = io.WriteString(w, `{"ip":{"count":"0","attacks":"","threatfeeds":{"emergincompromised":{}}}}`)
-		default:
-			_, _ = io.WriteString(w, `{"ip":{"count":3,"attacks":"5","maxdate":"2026-10-01"}}`)
+		for ip, body := range answers {
+			if strings.Contains(r.URL.Path, "/"+ip) {
+				_, _ = io.WriteString(w, body)
+				return
+			}
 		}
+		_, _ = io.WriteString(w, `{"ip":{"count":null}}`)
 	}))
 	t.Cleanup(srv.Close)
 	e := NewEnricher(IntelCfg{ISC: true}, slog.New(slog.NewTextHandler(io.Discard, nil)), "test")
 	e.health = NewHealthBoard()
 	e.urls.isc = srv.URL + "/"
 	ctx := testCtx(t)
-	tor, _ := e.iscHost(ctx, "198.51.100.1")
+	for ip, want := range map[string]bool{"198.51.100.1": false, "198.51.100.2": true, "198.51.100.3": false, "198.51.100.4": false,
+		"198.51.100.5": false, "198.51.100.6": true, "198.51.100.7": false} {
+		in, err := e.iscHost(ctx, ip)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := hasTag(in.Tags, "isc-attacker"); got != want {
+			t.Errorf("%s: flagged=%v, want %v (tags %v)", ip, got, want, in.Tags)
+		}
+	}
 	listed, _ := e.iscHost(ctx, "198.51.100.2")
-	attacker, _ := e.iscHost(ctx, "198.51.100.3")
-	if hasTag(tor.Tags, "isc-attacker") || iscSummary(tor.Tags) != "" {
-		t.Errorf("Tor and spam feeds must not flag: %v", tor.Tags)
+	if s := iscSummary(listed.Tags); !strings.Contains(s, "Emerging Threats compromised hosts") {
+		t.Errorf("listed summary: %q", s)
 	}
-	if !hasTag(listed.Tags, "isc-attacker") || !strings.Contains(iscSummary(listed.Tags), "Emerging Threats compromised hosts") {
-		t.Errorf("a compromised-host feed must flag: %v / %q", listed.Tags, iscSummary(listed.Tags))
+	old, _ := e.iscHost(ctx, "198.51.100.3")
+	if !hasTag(old.Tags, "isc-feed:ciarmy") || hasTag(old.Tags, "isc-listed:CINS Army bad actors") {
+		t.Errorf("an old listing stays as evidence only: %v", old.Tags)
 	}
-	if s := iscSummary(attacker.Tags); s != "SANS ISC has 5 report(s) of it attacking DShield sensors, most recently 2026-10-01" {
+	scanner, _ := e.iscHost(ctx, "198.51.100.6")
+	if s := iscSummary(scanner.Tags); s != "SANS ISC has 5400 report(s) of it attacking DShield sensors, most recently "+day(2) {
 		t.Errorf("attack summary: %q", s)
+	}
+}
+
+// An address flagged by SANS ISC alone is Medium (attacking sensors), not High (compromised).
+func TestISCOnlyFlagIsMedium(t *testing.T) {
+	h, _ := intelLab(t)
+	h.seedExample()
+	tg := h.addTarget("example.test", "")
+	h.scan(tg.ID)
+	f, ok := findingKeys(t, h, "ip-flagged", "open")["flag:203.0.113.10"]
+	if !ok {
+		t.Fatal("no ISC flag raised")
+	}
+	if f.Severity != "medium" || f.Trust == trustTrusted {
+		t.Errorf("ISC alone: want medium and not trusted, got %s / %s", f.Severity, f.Trust)
 	}
 }

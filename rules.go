@@ -93,8 +93,8 @@ var ruleIndex = map[string]ruleMeta{
 		"An intelligence source reports one of the risky ports open on an address of the domain. Addresses on a CDN edge are skipped: tagged cdn by Shodan, or inside the published Cloudflare, Fastly, CloudFront or GitHub Pages ranges."},
 	"known-vuln": {"EASM-EXP-002", "Exposure intelligence", modeIntel, "High with any CVE in CISA KEV, an EPSS of 50% or more, or 10 or more CVEs; otherwise Medium",
 		"Shodan lists CVEs for the software versions seen on an address. CVEs in CISA KEV come first, then the highest FIRST EPSS scores."},
-	"ip-flagged": {"EASM-EXP-003", "Exposure intelligence", modeIntel, "High",
-		"Shodan tags an address compromised, malware or doublepulsar, or SANS ISC has reports of it attacking DShield sensors or lists it on a compromised-host feed (Emerging Threats compromised, CINS Army). The two are independent, so together they make the finding trusted."},
+	"ip-flagged": {"EASM-EXP-003", "Exposure intelligence", modeIntel, "High when Shodan tags it, Medium when only SANS ISC reports it",
+		"Shodan tags an address compromised, malware or doublepulsar, or SANS ISC shows it recently attacking: reports in the last 30 days from at least 100 DShield sensors, or a compromised-host feed listing (Emerging Threats compromised, CINS Army) seen in the last 30 days. Older or sparser ISC data is kept as evidence only. The two sources are independent, so together they make the finding trusted."},
 	"tor-exit": {"EASM-EXP-005", "Exposure intelligence", "Passive: Tor Project exit list (download)", "Medium",
 		"An address the domain's names resolve to is on the Tor Project's current exit-node list."},
 	"eol-software": {"EASM-EXP-004", "Exposure intelligence", modeIntel, "Medium",
@@ -102,7 +102,7 @@ var ruleIndex = map[string]ruleMeta{
 
 	// Brand and leak monitoring
 	"lookalike-domain": {"EASM-BRAND-001", "Brand and leak monitoring", modeOSINT, "Medium when it accepts email (MX), otherwise Low",
-		"A registered variation of the domain resolves (see look-alike techniques)."},
+		"A variation of the domain (see look-alike techniques) is registered by someone else and accepts email or has a web address. Left out: names on the domain's own name servers, or whose name servers or mail servers are under the domain, or that point at its own web server; names served by parking or resale services; and names with neither mail nor web."},
 	"leaked-credentials": {"EASM-BRAND-002", "Brand and leak monitoring", modeOSINT, "High for 5 or more accounts in one breach, otherwise Medium",
 		"Have I Been Pwned lists accounts at the domain in a breach (API key required)."},
 	"repo-exposure": {"EASM-BRAND-003", "Brand and leak monitoring", modeOSINT, "Medium",
