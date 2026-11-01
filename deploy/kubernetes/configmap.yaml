@@ -1,0 +1,19 @@
+# Bootstrap settings (config.example.yaml documents every key). Everything about what and
+# how to scan is set in the web interface and kept in the database.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: easm-agent-config
+data:
+  config.yaml: |
+    listen: "0.0.0.0:8080"
+    data_dir: "/data/easm"
+    # TLS ends at the ingress or gateway; the NetworkPolicy only lets it reach this port.
+    # For TLS all the way to the pod, remove plain_http and set tls_cert / tls_key to a mounted Secret.
+    plain_http: true
+    secure_cookies: true
+    no_browser: true
+    logging:
+      level: info
+      format: json
+      file: ""

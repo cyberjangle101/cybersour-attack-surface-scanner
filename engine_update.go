@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"errors"
+	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -15,9 +17,23 @@ type UpdateState struct {
 	Checked   time.Time
 	Latest    *Release
 	Available bool   // Latest is newer than the running version
-	CanApply  bool   // this build can verify (and so install) it
+	CanApply  bool   // this build can verify (and so install) it, and is allowed to
+	Managed   bool   // the version is set by a container image or package manager, not by the agent
 	Err       string // last check failure, if any
 }
+
+// managedMode reports whether something outside the agent owns its version (EASM_MANAGED=1, set
+// in the container image). The agent then still says when a release is out, but never replaces
+// its own program: in a container that change would be lost at the next restart (or fail on a
+// read-only file system) and the running version would drift from the image.
+func managedMode() bool {
+	v := os.Getenv("EASM_MANAGED")
+	return v != "" && v != "0" && !strings.EqualFold(v, "false")
+}
+
+// errManaged refuses a self-update in managed mode.
+var errManaged = errors.New("this agent's version is managed by its container image (EASM_MANAGED is set): " +
+	"update by deploying the new image tag instead of installing over the program")
 
 // updateBoard holds the last check result between scheduler passes.
 type updateBoard struct {
@@ -35,7 +51,7 @@ func (e *Engine) UpdateState() UpdateState {
 // CheckForUpdate asks for the newest release now and records the answer.
 func (e *Engine) CheckForUpdate(ctx context.Context) UpdateState {
 	u := e.updater()
-	st := UpdateState{Checked: time.Now(), CanApply: u.CanInstall()}
+	st := UpdateState{Checked: time.Now(), CanApply: u.CanInstall() && !managedMode(), Managed: managedMode()}
 	if r, err := u.Latest(ctx); errors.Is(err, ErrNoRelease) {
 		e.log.Info("update check: no release published yet")
 	} else if err != nil {
