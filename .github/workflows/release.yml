@@ -22,6 +22,11 @@ on:
 permissions:
   contents: read
 
+# One run per tag, never cancelled halfway (a half-published release is worse than a queued one).
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   uat-passed:
     name: UAT passed for this commit
@@ -54,31 +59,30 @@ jobs:
           echo "::error::No release candidate ${TAG}-rc.N on ${SHA} passed all ${UAT_JOBS} UAT jobs. Tag one on this commit and let its UAT pass first."
           exit 1
 
-  release:
-    name: Build, sign and publish
+  build:
+    name: Build and scan
     needs: uat-passed
     # Runs for an RC (uat-passed is skipped) and for a release whose UAT passed.
     if: ${{ !failure() && !cancelled() }}
     runs-on: ubuntu-latest
-    environment: ${{ contains(github.ref_name, '-rc.') && 'UAT' || 'Production' }}
-    permissions:
-      contents: write # create the release
+    # Read-only and no secrets: tests, compilers and scanners run here, apart from the signing key and the write token.
     steps:
-      # Actions pinned to commit SHAs: this job holds the signing key and can publish
-      # releases, so a re-pointed tag must not be able to run code here. Dependabot
-      # (github-actions) keeps the pins current.
+      # Actions pinned to commit SHAs, so a re-pointed tag cannot run code in a release.
+      # Dependabot (github-actions) keeps the pins current.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: stable # newest toolchain: release builds pick up stdlib security fixes
           check-latest: true
+          cache: false # no shared cache in a release build (cache poisoning)
 
-      - name: Version from the tag
+      - name: README mentions the version
         env:
           TAG: ${{ github.ref_name }}
         run: |
-          echo "VERSION=${TAG#v}" >> "$GITHUB_ENV"
           BASE=${TAG%%-*} # an RC is checked against the release it leads to
           grep -q "${BASE}" README.md || { echo "README.md does not mention ${BASE} (update What's new and Status first)"; exit 1; }
 
@@ -86,7 +90,10 @@ jobs:
         run: go test -count=1 ./...
 
       - name: Build
+        env:
+          TAG: ${{ github.ref_name }}
         run: |
+          VERSION=${TAG#v}
           mkdir -p dist
           for target in windows/amd64 linux/amd64 linux/arm64; do
             os=${target%/*}; arch=${target#*/}; ext=""; [ "$os" = windows ] && ext=".exe"
@@ -95,21 +102,64 @@ jobs:
           done
 
       - name: Vulnerability scan of the binaries
+        env:
+          TAG: ${{ github.ref_name }}
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
-          go build -trimpath -ldflags "-X main.version=${VERSION}" -o /tmp/easm-agent-unstripped .
-          govulncheck -mode=binary /tmp/easm-agent-unstripped
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0 # pinned: an exact, checksum-verified module version
+          go build -trimpath -ldflags "-X main.version=${TAG#v}" -o "$RUNNER_TEMP/easm-agent-unstripped" .
+          govulncheck -mode=binary "$RUNNER_TEMP/easm-agent-unstripped"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    name: Sign and publish
+    needs: build
+    # !cancelled(): uat-passed, an ancestor, is skipped for an RC, which would otherwise skip this job.
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    environment: ${{ contains(github.ref_name, '-rc.') && 'UAT' || 'Production' }}
+    permissions:
+      contents: write # create the release
+      id-token: write # build provenance (OIDC identity for the attestation)
+      attestations: write # build provenance
+    steps:
+      # Only first-party code runs here: this job holds the signing key and a write token.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false # gh gets the token through GH_TOKEN in the one step that publishes
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+          check-latest: true
+          cache: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist
 
       - name: Checksums and signature
         env:
           EASM_RELEASE_SIGNING_KEY: ${{ secrets.EASM_RELEASE_SIGNING_KEY }}
+          TAG: ${{ github.ref_name }}
         run: |
           if [ -z "$EASM_RELEASE_SIGNING_KEY" ]; then
             echo "The EASM_RELEASE_SIGNING_KEY secret is not set; see RELEASING.md"; exit 1
           fi
-          go run ./tools/release sums -version "$VERSION" -dir dist
+          go run ./tools/release sums -version "${TAG#v}" -dir dist
           go run ./tools/release sign -dir dist
           go run ./tools/release verify -dir dist
+
+      - name: Build provenance (SLSA)
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*
 
       - name: Publish
         env:
@@ -117,7 +167,7 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           pre=""; case "$TAG" in *-rc.*) pre="--prerelease" ;; esac
-          gh release create "$TAG" dist/* --verify-tag $pre --title "EASM Agent ${VERSION}" --generate-notes
+          gh release create "$TAG" dist/* --verify-tag $pre --title "EASM Agent ${TAG#v}" --generate-notes
 
   # ---- UAT: runs only for an RC, against the commit and the build it just published ----
 
@@ -131,13 +181,14 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0 # full history for the secret scan
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: stable
           check-latest: true
-          cache: true
+          cache: false
 
       - name: Format and vet
         run: |
@@ -180,7 +231,7 @@ jobs:
 
       - name: Dependency scan (govulncheck)
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
           govulncheck ./...
 
       - name: Secret scan (full history)
@@ -192,9 +243,11 @@ jobs:
     # !cancelled(): without a status function GitHub skips this job, because uat-passed (an ancestor) is skipped for an RC.
     if: ${{ !cancelled() && needs.release.result == 'success' && contains(github.ref_name, '-rc.') }}
     runs-on: ubuntu-latest
-    container: semgrep/semgrep:1.182.1
+    container: semgrep/semgrep:1.182.1@sha256:451b3d875c00dac7ed5db5293e584a07de11449a409c10b3c2d2652f429630b6
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Run Semgrep on the whole code base
         run: >-
           semgrep scan --error --metrics=off
@@ -210,11 +263,14 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: stable
           check-latest: true
+          cache: false
 
       - name: Download the pre-release and verify its signature
         env:
@@ -237,7 +293,7 @@ jobs:
       - name: ZAP baseline scan (fails on any medium or high alert)
         run: |
           mkdir -p zap && chmod 777 zap
-          docker run --rm --network host -v "$PWD/zap:/zap/wrk:rw" ghcr.io/zaproxy/zaproxy:2.17.0 \
+          docker run --rm --network host -v "$PWD/zap:/zap/wrk:rw" ghcr.io/zaproxy/zaproxy:2.17.0@sha256:030d3df57735dacbb83464854758e674dd9ad01d79d12a129a8e58b1fd384238 \
             zap-baseline.py -t http://127.0.0.1:8080 -J zap.json -r zap.html -I
           jq -r '.site[].alerts[] | "\(.riskdesc)  \(.name)"' zap/zap.json | sort -u
           bad=$(jq '[.site[].alerts[] | select((.riskcode | tonumber) >= 2)] | length' zap/zap.json)
@@ -260,12 +316,14 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: stable
           check-latest: true
-          cache: true
+          cache: false
 
       - name: Download the pre-release, verify it, and fetch the current production release
         shell: pwsh

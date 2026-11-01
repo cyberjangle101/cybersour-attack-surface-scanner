@@ -7,8 +7,10 @@ updates:
     # Wait a week before proposing a newly published version, so a hijacked or broken release is caught first.
     cooldown:
       default-days: 7
-  # Add this once go.mod exists:
-  # - package-ecosystem: "gomod"
-  #   directory: "/"
-  #   schedule:
-  #     interval: "weekly"
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    # Same cooldown for modules. Security updates (Dependabot security updates) are not delayed by it.
+    cooldown:
+      default-days: 7
