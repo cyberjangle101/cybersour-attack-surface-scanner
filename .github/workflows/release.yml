@@ -30,20 +30,29 @@ jobs:
     permissions:
       actions: read # read the RC's workflow runs
     steps:
-      - name: Require a release candidate of this version, on this commit, whose UAT passed
+      - name: Require a release candidate of this version, on this commit, whose UAT jobs all passed
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
           SHA: ${{ github.sha }}
+          UAT_JOBS: "4" # the "UAT:" jobs below; keep in step when adding or removing one
         run: |
-          runs=$(gh api "repos/$REPO/actions/workflows/release.yml/runs?head_sha=$SHA&status=success&per_page=100" \
-            --jq "[.workflow_runs[] | select(.head_branch | startswith(\"$TAG-rc.\")) | .head_branch] | unique | join(\" \")")
-          if [ -z "$runs" ]; then
-            echo "::error::No release candidate ${TAG}-rc.N on ${SHA} has passed UAT. Tag one on this commit and let its Release run go green first."
-            exit 1
-          fi
-          echo "UAT passed on this commit as: $runs"
+          # A green run is not enough: skipped jobs leave a run green, so count UAT jobs that succeeded.
+          ids=$(gh api "repos/$REPO/actions/workflows/release.yml/runs?head_sha=$SHA&status=success&per_page=100" \
+            --jq ".workflow_runs[] | select(.head_branch | startswith(\"$TAG-rc.\")) | \"\(.id):\(.head_branch)\"")
+          for entry in $ids; do
+            id=${entry%%:*}; rc=${entry#*:}
+            passed=$(gh api "repos/$REPO/actions/runs/$id/jobs?per_page=100" \
+              --jq '[.jobs[] | select(.name | startswith("UAT:")) | select(.conclusion == "success")] | length')
+            echo "$rc (run $id): $passed of $UAT_JOBS UAT jobs passed"
+            if [ "$passed" -ge "$UAT_JOBS" ]; then
+              echo "UAT passed on this commit as $rc"
+              exit 0
+            fi
+          done
+          echo "::error::No release candidate ${TAG}-rc.N on ${SHA} passed all ${UAT_JOBS} UAT jobs. Tag one on this commit and let its UAT pass first."
+          exit 1
 
   release:
     name: Build, sign and publish
@@ -115,7 +124,8 @@ jobs:
   uat-gate:
     name: "UAT: full test gate"
     needs: release
-    if: ${{ contains(github.ref_name, '-rc.') }}
+    # !cancelled(): without a status function GitHub skips this job, because uat-passed (an ancestor) is skipped for an RC.
+    if: ${{ !cancelled() && needs.release.result == 'success' && contains(github.ref_name, '-rc.') }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -179,7 +189,8 @@ jobs:
   uat-sast:
     name: "UAT: static analysis (Semgrep)"
     needs: release
-    if: ${{ contains(github.ref_name, '-rc.') }}
+    # !cancelled(): without a status function GitHub skips this job, because uat-passed (an ancestor) is skipped for an RC.
+    if: ${{ !cancelled() && needs.release.result == 'success' && contains(github.ref_name, '-rc.') }}
     runs-on: ubuntu-latest
     container: semgrep/semgrep:1.182.1
     steps:
@@ -193,7 +204,8 @@ jobs:
   uat-dast:
     name: "UAT: dynamic scan (ZAP) of the published Linux build"
     needs: release
-    if: ${{ contains(github.ref_name, '-rc.') }}
+    # !cancelled(): without a status function GitHub skips this job, because uat-passed (an ancestor) is skipped for an RC.
+    if: ${{ !cancelled() && needs.release.result == 'success' && contains(github.ref_name, '-rc.') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -242,7 +254,8 @@ jobs:
   uat-windows:
     name: "UAT: user acceptance, upgrade and service tests (Windows)"
     needs: release
-    if: ${{ contains(github.ref_name, '-rc.') }}
+    # !cancelled(): without a status function GitHub skips this job, because uat-passed (an ancestor) is skipped for an RC.
+    if: ${{ !cancelled() && needs.release.result == 'success' && contains(github.ref_name, '-rc.') }}
     runs-on: windows-latest # elevated, so the service test can install a real service
     timeout-minutes: 60
     steps:
