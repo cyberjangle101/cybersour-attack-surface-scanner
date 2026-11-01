@@ -484,6 +484,7 @@ func main() {
 		force     = flag.Bool("force", false, "with -restore: replace an existing database (the old one is kept alongside)")
 		migrate   = flag.Bool("migrate-data", false, "move an installation that lives next to the program into the default data folder, then exit")
 		showVer   = flag.Bool("version", false, "print version and exit")
+		showCode  = flag.Bool("show-setup-code", false, "print the first-administrator setup code from the data folder, then exit (containers: kubectl exec <pod> -- easm-agent -show-setup-code -data-dir <dir>)")
 		updCheck  = flag.Bool("update-check", false, "say whether a newer release exists, then exit")
 		updApply  = flag.Bool("update", false, "download, verify and install the newest release (stops and restarts the service if it runs as one), then exit")
 		rollback  = flag.Bool("rollback", false, "go back to the version the last update replaced (stop the agent first), then exit")
@@ -552,6 +553,14 @@ func main() {
 		fatal(err)
 	}
 
+	if *showCode {
+		code, err := readSetupCode(boot.DataDir)
+		if err != nil {
+			fatal(err)
+		}
+		fmt.Println(code)
+		return
+	}
 	if *restore != "" {
 		if err := restoreCommand(boot, *restore, *force); err != nil {
 			fatal(err)
@@ -606,6 +615,9 @@ func main() {
 		}
 	}
 	if *updApply || *rollback {
+		if managedMode() {
+			fatal(errManaged)
+		}
 		if err := updateCommand(boot, svc, *rollback, *assumeYes); err != nil {
 			fatal(err)
 		}

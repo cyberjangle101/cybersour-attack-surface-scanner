@@ -29,6 +29,11 @@ func (s *Server) updateCheck(w http.ResponseWriter, r *http.Request, sess *Sessi
 // updateInstall downloads, verifies and installs the release the last check found,
 // after taking a backup, then restarts into it where that can be done safely.
 func (s *Server) updateInstall(w http.ResponseWriter, r *http.Request, sess *Session) {
+	if managedMode() {
+		s.flash(sess, "warn", "This agent's version is managed by its container image: deploy the new image tag instead.")
+		http.Redirect(w, r, "/health#updates", http.StatusSeeOther)
+		return
+	}
 	st := s.eng.UpdateState()
 	want := r.PostFormValue("version")
 	if !st.Available || st.Latest == nil || st.Latest.Version != want {

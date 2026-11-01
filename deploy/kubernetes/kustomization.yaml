@@ -1,0 +1,26 @@
+# EASM Agent on Kubernetes (GKE, AKS, EKS or any conformant cluster). See docs/KUBERNETES.md.
+#
+#   kubectl create namespace easm
+#   kubectl -n easm create secret generic easm-key-passphrase --from-file=passphrase=./passphrase.txt
+#   kubectl apply -k deploy/kubernetes
+#
+# Pin the image to a release (and ideally its digest) below.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: easm
+resources:
+  - namespace.yaml
+  - serviceaccount.yaml
+  - configmap.yaml
+  - service.yaml
+  - statefulset.yaml
+  - networkpolicy.yaml
+images:
+  - name: easm-agent
+    newName: ghcr.io/cyberjangle101/easm-agent
+    newTag: "1.9.12"
+labels:
+  - pairs:
+      app.kubernetes.io/name: easm-agent
+      app.kubernetes.io/part-of: easm
+    includeSelectors: false

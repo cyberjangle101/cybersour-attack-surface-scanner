@@ -69,6 +69,7 @@
         <button class="btn primary" type="submit" data-busy="Downloading and verifying…">Back up and install {{.Latest.Version}}</button>
       </form>
       <p class="hint">The download is checked against the release&rsquo;s signed checksums before anything changes. The current version is kept for <span class="mono">easm-agent -rollback</span>.</p>
+      {{else if .Managed}}<p class="hint">This agent runs from a container image, so it does not install updates over itself. Deploy the image tagged <span class="mono">{{.Latest.Version}}</span> instead (see docs/KUBERNETES.md).</p>
       {{else}}<p class="hint">This build has no release signing key, so it cannot verify downloads and will not install them. Download the new version from the release page instead.</p>{{end}}
     {{else if and (not .Checked.IsZero) (not .Latest)}}<p><span class="badge good">Up to date</span> No versioned release has been published yet.</p>
     {{else if not .Checked.IsZero}}<p><span class="badge good">Up to date</span> {{$.Version}} is the latest release.</p>

@@ -1,0 +1,27 @@
+# Example only (not in kustomization.yaml): ingress-nginx with a cert-manager certificate.
+# On GKE you may prefer a Gateway with IAP; on AKS, the application routing add-on with
+# Entra ID in front. Keep TLS at the edge: the pod serves plain HTTP inside the cluster.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: easm-agent
+  namespace: easm
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
+    nginx.ingress.kubernetes.io/proxy-body-size: 20m # backups and certificate uploads
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [easm.example.com]
+      secretName: easm-agent-tls
+  rules:
+    - host: easm.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: easm-agent
+                port:
+                  name: http

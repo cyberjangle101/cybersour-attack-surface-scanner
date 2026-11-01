@@ -64,6 +64,17 @@ are emailed only about new subdomains, new IP/DNS records, new certificates and 
   * HSTS and redirects: the response headers;
   * missing `security.txt`: the file;
   * any web address named in the finding.
+**v1.9.12 (runs on Kubernetes: GKE, AKS, EKS):**
+
+* **Container image:** `ghcr.io/cyberjangle101/easm-agent:<version>` for amd64 and arm64.
+  * Built from the signed release binaries on distroless.
+  * Runs as non-root with a read-only file system, and carries SLSA provenance.
+  * Every release candidate's image is tested in Docker and on a real Kubernetes cluster before it can be released.
+* **Manifests** in [`deploy/kubernetes`](deploy/kubernetes): a single-replica StatefulSet on block storage, the restricted Pod Security Standard, a NetworkPolicy, and health probes. The guide is [docs/KUBERNETES.md](docs/KUBERNETES.md).
+* **For containers and services:**
+  * `EASM_KEY_PASSPHRASE_FILE` reads the key passphrase from a mounted secret (Kubernetes Secret, Secret Manager, Key Vault) instead of an environment variable.
+  * `EASM_MANAGED=1` (set in the image) keeps the "new version available" notice but never installs over the program: you update by deploying the new image.
+  * `-show-setup-code` prints the first-administrator code, for images with no shell.
 
 **v1.9.11 (fewer false positives in two rules):**
 

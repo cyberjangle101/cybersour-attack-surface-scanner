@@ -53,8 +53,9 @@ key, and publish a release. Agents still on the old key need that release instal
 
    The workflow runs in the `UAT` environment and publishes a pre-release, which installed
    agents never update to. Its `UAT:` jobs then test that published build: the full test
-   gate, Semgrep, a ZAP scan, and on Windows `uat\run.ps1` (lab UAT, upgrade from the current
-   release, service install). If any job fails, fix it in a new PR and tag `-rc.2`.
+   gate, Semgrep, a ZAP scan, on Windows `uat\run.ps1` (lab UAT, upgrade from the current
+   release, service install), and the container image in Docker and on a kind Kubernetes cluster.
+   If any job fails, fix it in a new PR and tag `-rc.2`.
 3. Production: once the RC passes UAT, tag the same commit as the release and push it:
 
    ```
@@ -74,6 +75,11 @@ key, and publish a release. Agents still on the old key need that release instal
      (headed `# easm-agent X.Y.Z`), signs it into `SHA256SUMS.sig`, verifies the signature against
      the committed `release_key.go`, records SLSA build provenance, and only then publishes the
      GitHub release with generated notes.
+
+   Then a "Container image" job builds `ghcr.io/cyberjangle101/easm-agent:X.Y.Z` (amd64 and arm64)
+   from those verified binaries, pushes it and attests its provenance. The first push creates the
+   package as private: make it public once under the repository's Packages so clusters can pull it
+   without credentials.
 
    Anyone can check a download came from this workflow:
    `gh attestation verify easm-agent-windows-amd64.exe --repo cyberjangle101/cybersour-attack-surface-scanner`.

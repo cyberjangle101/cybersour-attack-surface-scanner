@@ -122,7 +122,12 @@ Every change goes to the UAT environment first, and reaches production only afte
    - ZAP baseline against the Linux build (fails on any medium or high alert)
    - Windows, against the signed RC exe: `uat\run.ps1`, which runs the lab UAT scripts (scan, evidence, trust),
      the upgrade test from the current production release, and the service install test.
+   - Container: the RC image (built from the signed binaries, with provenance) run hardened in Docker
+     (first start, `-show-setup-code`, managed mode refuses `-update`, graceful SIGTERM, restart), then
+     `deploy/kubernetes` applied to a kind cluster with the restricted Pod Security Standard enforced.
+   The production gate requires all five (`UAT_JOBS` in `release.yml`; keep it in step when adding a `UAT:` job).
    Watch the run (`gh run watch`) and report each job's result to me. A red job means UAT failed.
+   Changes to `Dockerfile` or `deploy/kubernetes` are covered by the container UAT job only (no Docker on this machine).
    Add or update a `uat\*.ps1` check for every change in behaviour, in the same PR as the change.
 3. Production: only when UAT passes and I agree, tag `vX.Y.Z` on the same commit as the passing RC and push it. Its first job,
    "UAT passed for this commit", stops the release unless a `vX.Y.Z-rc.N` run on that commit is green. Then the workflow

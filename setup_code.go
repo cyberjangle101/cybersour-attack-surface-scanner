@@ -53,6 +53,31 @@ func newSetupCode() (string, error) {
 	return string(out), nil
 }
 
+// readSetupCode returns the current setup code from setup-code.txt in dataDir, for
+// -show-setup-code: in a container image with no shell, `kubectl exec ... easm-agent
+// -show-setup-code` is how the installer reads it. Only someone allowed to exec into the
+// pod can, which keeps the code out of the logs.
+func readSetupCode(dataDir string) (string, error) {
+	b, err := os.ReadFile(filepath.Join(dataDir, setupCodeFile)) // #nosec G304 -- fixed name inside the agent's own data folder
+	if os.IsNotExist(err) {
+		return "", fmt.Errorf("no setup code in %s: an administrator already exists, or the agent has not started yet", dataDir)
+	}
+	if err != nil {
+		return "", err
+	}
+	lines := strings.FieldsFunc(string(b), func(r rune) bool { return r == '\n' || r == '\r' })
+	for _, line := range lines {
+		if !strings.HasPrefix(line, "    ") {
+			continue
+		}
+		// Only something that is a setup code: 20 characters from the code alphabet.
+		if c := normaliseCode(strings.TrimSpace(line)); len(c) == 20 && strings.Trim(c, setupAlphabet) == "" {
+			return groupCode(c), nil
+		}
+	}
+	return "", fmt.Errorf("%s does not contain a setup code", filepath.Join(dataDir, setupCodeFile))
+}
+
 // groupCode writes a code as XXXXX-XXXXX-XXXXX-XXXXX so it is easy to read out and type.
 func groupCode(c string) string {
 	var parts []string
