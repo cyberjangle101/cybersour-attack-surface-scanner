@@ -9,6 +9,7 @@ This is every check the EASM Agent runs against a monitored domain: the finding 
 * **Passive checks** read public DNS, registration data (RDAP) and public sources. They send nothing to the organisation's own servers.
 * **Active checks** connect to the organisation's own web servers and are off unless switched on (Settings → Active checks, or the first-scan option when a domain is added). They use read-only `GET` requests and TLS handshakes, follow no redirects, connect only to public routable addresses, and by default only to addresses inside the domain's expected ownership. Exposed-file and login-portal path checks need the separate *exposed files* option.
 * **Third-party intelligence** (Shodan InternetDB, Shodan, Censys) is often stale. Its findings are *Unconfirmed* until a second, independent source agrees: Censys, the agent's own active check, SANS ISC attack reports (for flagged addresses), or an analyst. InternetDB and the Shodan API count as one source. Unconfirmed findings are listed but not alerted, counted or reported.
+* **Threat intelligence** (look-alike domains, public code, leaked accounts) looks outside the organisation's own attack surface: other people's domains, public code and breaches. It is noisier and serves a threat-intelligence team rather than exposure management, so each check is off unless switched on (Settings → Threat intelligence). Switching one off closes its open findings; accepted risks are kept.
 * **Resolution.** A finding resolves automatically only when a later scan actually re-checked the thing it is about and found it fixed; an outage or unreachable server never closes a finding.
 * **Severity** is High, Medium, Low or Info; analysts can override it per finding with a reason.
 
@@ -518,7 +519,7 @@ This is every check the EASM Agent runs against a monitored domain: the finding 
 * **Why it matters:** Traffic from anyone using Tor leaves the internet from this address. Abuse reports, blocklists and investigators will point at it, and on a server you did not mean to run as an exit it can mean the host was taken over.
 * **What to do:** If the exit is intended, document it and keep it on a separate address from your services. If not, find and stop the Tor process and investigate how it got there.
 
-## Brand and leak monitoring
+## Threat intelligence (off by default)
 
 ### EASM-BRAND-001: A look-alike of your domain is registered
 
@@ -574,8 +575,8 @@ Every external source the agent can use, whether it needs a key, what it is sent
 | Shodan InternetDB | Exposure intelligence | None | IP addresses | On | EXP-001...004 |
 | Shodan API | Exposure intelligence | Shodan key | IP addresses | Off until a key is saved | EXP-001...004 |
 | Censys | Exposure intelligence | Personal access token | IP addresses | Off until a token is saved | EXP-001 (an independent second source) |
-| SANS Internet Storm Center | Threat intelligence (attack reports) | None | IP addresses | On | EXP-003 (an independent second source to Shodan's tags) |
-| Tor Project exit list | Threat intelligence (download) | None | Nothing (plain download) | On | EXP-005 |
+| SANS Internet Storm Center | Reputation of your own addresses (attack reports) | None | IP addresses | On | EXP-003 (an independent second source to Shodan's tags) |
+| Tor Project exit list | Reputation of your own addresses (download) | None | Nothing (plain download) | On | EXP-005 |
 | CISA Known Exploited Vulnerabilities | Vulnerability intelligence (download) | None | Nothing (plain download) | On | EXP-002 severity and ordering |
 | FIRST EPSS | Vulnerability intelligence | None | CVE identifiers | On | EXP-002 severity and ordering |
 | can-i-take-over-xyz fingerprints | Takeover intelligence (download) | None | Nothing (plain download) | On | DNS-001, DNS-007 |

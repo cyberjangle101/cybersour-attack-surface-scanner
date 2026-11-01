@@ -1664,8 +1664,46 @@ func (s *Server) settingsSave(w http.ResponseWriter, r *http.Request, sess *Sess
 		return
 	}
 	s.log.Info("settings changed", "by", sess.Username)
-	s.flash(sess, "good", "Settings saved. They apply from the next scan.")
+	msg := "Settings saved. They apply from the next scan."
+	if closed := s.closeSwitchedOffIntel(r, sess, cur, next); closed != "" {
+		msg += " " + closed
+	}
+	s.flash(sess, "good", msg)
 	http.Redirect(w, r, "/settings", http.StatusSeeOther)
+}
+
+// threatIntelChecks are the off-by-default threat-intelligence checks and the finding kind each raises.
+var threatIntelChecks = []struct {
+	label, kind string
+	on          func(Settings) bool
+}{
+	{"look-alike domains", "lookalike-domain", func(s Settings) bool { return s.LookalikeEnabled }},
+	{"public code", "repo-exposure", func(s Settings) bool { return s.GitHubEnabled }},
+	{"leaked accounts", "leaked-credentials", func(s Settings) bool { return s.HIBPEnabled }},
+}
+
+// closeSwitchedOffIntel closes the open findings of each threat-intelligence check that was just
+// switched off (nothing re-checks them once it is off) and audits it. It describes what it closed.
+func (s *Server) closeSwitchedOffIntel(r *http.Request, sess *Session, cur, next Settings) string {
+	var parts []string
+	for _, c := range threatIntelChecks {
+		if !c.on(cur) || c.on(next) {
+			continue
+		}
+		n, err := s.store.ResolveOpenFindingsOfKind(c.kind)
+		if err != nil {
+			s.log.Error("closing findings of a switched-off check", "kind", c.kind, "err", err)
+			continue
+		}
+		if n > 0 {
+			s.audit(sess, r, "findings.resolve", c.kind, fmt.Sprintf("%d open finding(s) closed: the %s check was switched off", n, c.label))
+			parts = append(parts, fmt.Sprintf("%d %s finding(s)", n, c.label))
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "Closed " + strings.Join(parts, " and ") + " because their check is now off (accepted risks are kept)."
 }
 
 // settingsTestEmail sends a test message to verify SMTP.

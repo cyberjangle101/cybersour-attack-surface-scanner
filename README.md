@@ -2,7 +2,7 @@
 
 A lightweight, single-binary agent for continuous **External Attack Surface Management (EASM)**. It runs as a persistent background service on Windows or Linux, watches the internet-facing footprint of the organisations you tell it about, and emails you only when something **changes**.
 
-> **Status:** v1.9.11. See "What's new in 1.9" below. Every check the agent runs is listed in [docs/RULES.md](docs/RULES.md).
+> **Status:** v1.9.13. See "What's new in 1.9" below. Every check the agent runs is listed in [docs/RULES.md](docs/RULES.md).
 
 ## Why
 
@@ -52,6 +52,18 @@ are emailed only about new subdomains, new IP/DNS records, new certificates and 
 * **Users:** admin, analyst and read-only viewer roles; local accounts with optional two-factor sign-in, or Active Directory sign-in (see *What's new in 1.6*).
 
 ## What's new in 1.9
+
+**v1.9.13 (threat intelligence kept apart; evidence links that fit):**
+
+* **Threat intelligence is separate and off by default.** Look-alike domains, public code (GitHub) and leaked accounts (Have I Been Pwned) look outside your own attack surface. They now have their own *Settings → Threat intelligence* section, marked off by default, and their rules are in a "Threat intelligence (off by default)" category. **Switching one off closes its open findings**, with an audit entry; risks you accepted are kept. Before, the findings stayed open for ever once nothing re-checked them. SANS ISC and the Tor exit list stay on: they are about your own addresses.
+* **"Check it yourself" links fit the finding.** Every finding about a name used to get a certificate-search (crt.sh) link, whatever it was about. Now each kind gets its own checks:
+  * public code: the file on GitHub and a code search for the domain;
+  * TLS: SSL Labs and crt.sh;
+  * look-alikes: RDAP, urlscan and crt.sh;
+  * takeovers: the published CNAME;
+  * HSTS and redirects: the response headers;
+  * missing `security.txt`: the file;
+  * any web address named in the finding.
 
 **v1.9.11 (fewer false positives in two rules):**
 
@@ -205,7 +217,12 @@ Each source below was checked against the live service before being added. All n
 
 **Two-factor sign-in** for local accounts: TOTP (authenticator app) with 8 single-use recovery codes. Admins can require it for all local accounts and reset a user's 2FA. API tokens are not subject to 2FA.
 
-**Wider discovery** (each switchable in Settings): look-alike domains (typos, homoglyphs, TLD swaps) that are actually registered; leaked credentials via Have I Been Pwned (needs a key); exposed repositories via GitHub (needs a token); related domains from certificates; reverse-IP neighbours. Results arrive as **suggestions** you add or dismiss; they never become scan targets on their own.
+**Wider discovery** (each switchable in Settings): related domains from certificates; reverse-IP neighbours. Results arrive as **suggestions** you add or dismiss; they never become scan targets on their own.
+
+**Threat intelligence (off by default, Settings → Threat intelligence):**
+* **What it covers:** look-alike domains that someone else registered and that can be used; leaked accounts via Have I Been Pwned (needs a key); public code that names your domain next to secret-like words, via GitHub (needs a token).
+* **Why it's separate:** these look outside your own attack surface. They are leads for a threat-intelligence team rather than exposures to fix, and they are noisier.
+* **Switching one off** closes its open findings. Risks you accepted are kept.
 
 **More email/DNS checks:** MTA-STS, TLS-RPT, DKIM (probes common selectors only, so "not found" is not proof of absence), SPF lookup limit and subdomain coverage, DMARC subdomain policy and reporting, CAA, DNSSEC.
 

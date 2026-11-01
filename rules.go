@@ -19,7 +19,7 @@ const (
 // Rule categories, in the order the reference lists them.
 var ruleCategories = []string{
 	"DNS and domain", "Email authentication", "TLS and HTTPS", "Web exposure", "Cloud and storage",
-	"Exposure intelligence", "Brand and leak monitoring",
+	"Exposure intelligence", "Threat intelligence (off by default)",
 }
 
 type ruleMeta struct {
@@ -100,12 +100,12 @@ var ruleIndex = map[string]ruleMeta{
 	"eol-software": {"EASM-EXP-004", "Exposure intelligence", modeIntel, "Medium",
 		"Shodan tags an address eol-os or eol-product."},
 
-	// Brand and leak monitoring
-	"lookalike-domain": {"EASM-BRAND-001", "Brand and leak monitoring", modeOSINT, "Medium when it accepts email (MX), otherwise Low",
+	// Threat intelligence: outside your own attack surface, so off unless switched on in Settings
+	"lookalike-domain": {"EASM-BRAND-001", "Threat intelligence (off by default)", modeOSINT, "Medium when it accepts email (MX), otherwise Low",
 		"A variation of the domain (see look-alike techniques) is registered by someone else and accepts email or has a web address. Left out: names on the domain's own name servers, or whose name servers or mail servers are under the domain, or that point at its own web server; names served by parking or resale services; and names with neither mail nor web."},
-	"leaked-credentials": {"EASM-BRAND-002", "Brand and leak monitoring", modeOSINT, "High for 5 or more accounts in one breach, otherwise Medium",
+	"leaked-credentials": {"EASM-BRAND-002", "Threat intelligence (off by default)", modeOSINT, "High for 5 or more accounts in one breach, otherwise Medium",
 		"Have I Been Pwned lists accounts at the domain in a breach (API key required)."},
-	"repo-exposure": {"EASM-BRAND-003", "Brand and leak monitoring", modeOSINT, "Medium",
+	"repo-exposure": {"EASM-BRAND-003", "Threat intelligence (off by default)", modeOSINT, "Medium",
 		"GitHub code search finds the domain near words such as password, secret or token (token required)."},
 }
 
@@ -135,8 +135,8 @@ var dataSources = []dataSource{
 	{"Shodan InternetDB", "Exposure intelligence", "None", "IP addresses", "On", "EXP-001...004"},
 	{"Shodan API", "Exposure intelligence", "Shodan key", "IP addresses", "Off until a key is saved", "EXP-001...004"},
 	{"Censys", "Exposure intelligence", "Personal access token", "IP addresses", "Off until a token is saved", "EXP-001 (an independent second source)"},
-	{"SANS Internet Storm Center", "Threat intelligence (attack reports)", "None", "IP addresses", "On", "EXP-003 (an independent second source to Shodan's tags)"},
-	{"Tor Project exit list", "Threat intelligence (download)", "None", "Nothing (plain download)", "On", "EXP-005"},
+	{"SANS Internet Storm Center", "Reputation of your own addresses (attack reports)", "None", "IP addresses", "On", "EXP-003 (an independent second source to Shodan's tags)"},
+	{"Tor Project exit list", "Reputation of your own addresses (download)", "None", "Nothing (plain download)", "On", "EXP-005"},
 	{"CISA Known Exploited Vulnerabilities", "Vulnerability intelligence (download)", "None", "Nothing (plain download)", "On", "EXP-002 severity and ordering"},
 	{"FIRST EPSS", "Vulnerability intelligence", "None", "CVE identifiers", "On", "EXP-002 severity and ordering"},
 	{"can-i-take-over-xyz fingerprints", "Takeover intelligence (download)", "None", "Nothing (plain download)", "On", "DNS-001, DNS-007"},
