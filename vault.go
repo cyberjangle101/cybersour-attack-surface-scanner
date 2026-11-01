@@ -46,26 +46,70 @@ const (
 var errDPAPIKey = errors.New("easm.key is protected with the Windows account that created it, and only that account on this computer can open it. " +
 	"Run the agent as that account (for a service: the service's account), or restore the key from the recovery copy made in System health → Encryption key")
 
-// PassphraseSource supplies the key-file passphrase when the key file is protected.
-// The default reads EASM_KEY_PASSPHRASE and falls back to a terminal prompt.
-var PassphraseSource = func() (string, error) {
+// maxPassphraseFile caps EASM_KEY_PASSPHRASE_FILE: a passphrase is short, so a big file is a mistake.
+const maxPassphraseFile = 4096
+
+// envPassphrase returns a passphrase given to an unattended agent: EASM_KEY_PASSPHRASE, or else the
+// contents of the file named by EASM_KEY_PASSPHRASE_FILE (a mounted secret, e.g. a Kubernetes
+// Secret or the Secret Store CSI driver; one trailing newline is dropped). ok=false when neither is set.
+func envPassphrase() (pass string, ok bool, err error) {
 	if p := os.Getenv("EASM_KEY_PASSPHRASE"); p != "" {
-		return p, nil
+		return p, true, nil
+	}
+	path := os.Getenv("EASM_KEY_PASSPHRASE_FILE")
+	if path == "" {
+		return "", false, nil
+	}
+	f, err := os.Open(path) // #nosec G304 -- the operator names this file; it holds the passphrase
+	if err != nil {
+		return "", true, fmt.Errorf("EASM_KEY_PASSPHRASE_FILE: %w", err)
+	}
+	defer func() { _ = f.Close() }()
+	b, err := io.ReadAll(io.LimitReader(f, maxPassphraseFile+1))
+	if err != nil {
+		return "", true, fmt.Errorf("EASM_KEY_PASSPHRASE_FILE: %w", err)
+	}
+	if len(b) > maxPassphraseFile {
+		return "", true, fmt.Errorf("EASM_KEY_PASSPHRASE_FILE %s is larger than %d bytes; it should hold only the passphrase", path, maxPassphraseFile)
+	}
+	p := string(b)
+	switch {
+	case strings.HasSuffix(p, "\r\n"):
+		p = p[:len(p)-2]
+	case strings.HasSuffix(p, "\n"):
+		p = p[:len(p)-1]
+	}
+	if p == "" {
+		return "", true, fmt.Errorf("EASM_KEY_PASSPHRASE_FILE %s is empty", path)
+	}
+	if strings.ContainsAny(p, "\r\n") {
+		// A passphrase cannot contain a line break (it could not be typed at the prompt either),
+		// so a second line means the wrong file or a stray edit: refuse rather than guess.
+		return "", true, fmt.Errorf("EASM_KEY_PASSPHRASE_FILE %s must hold the passphrase on a single line", path)
+	}
+	return p, true, nil
+}
+
+// PassphraseSource supplies the key-file passphrase when the key file is protected.
+// The default reads EASM_KEY_PASSPHRASE or EASM_KEY_PASSPHRASE_FILE and falls back to a terminal prompt.
+var PassphraseSource = func() (string, error) {
+	if p, ok, err := envPassphrase(); ok {
+		return p, err
 	}
 	if term.IsTerminal(int(os.Stdin.Fd())) {
 		return readPassword("Key file passphrase: ")
 	}
-	return "", errors.New("easm.key is passphrase-protected: set the EASM_KEY_PASSPHRASE environment variable (or start the program from a terminal to be prompted)")
+	return "", errors.New("easm.key is passphrase-protected: set EASM_KEY_PASSPHRASE or EASM_KEY_PASSPHRASE_FILE (or start the program from a terminal to be prompted)")
 }
 
 // passphraseAttempts is how many passphrases someone at the terminal may try.
 const passphraseAttempts = 3
 
 // passphraseInteractive reports whether PassphraseSource will ask someone at the
-// terminal, who can try again after a typo. A passphrase from the environment
-// (services, tests) gets one attempt.
+// terminal, who can try again after a typo. A passphrase from the environment or a
+// file (services, containers, tests) gets one attempt.
 var passphraseInteractive = func() bool {
-	return os.Getenv("EASM_KEY_PASSPHRASE") == "" && term.IsTerminal(int(os.Stdin.Fd()))
+	return os.Getenv("EASM_KEY_PASSPHRASE") == "" && os.Getenv("EASM_KEY_PASSPHRASE_FILE") == "" && term.IsTerminal(int(os.Stdin.Fd()))
 }
 
 // promptOut receives the messages shown around the passphrase prompt.

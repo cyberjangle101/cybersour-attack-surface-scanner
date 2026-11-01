@@ -69,9 +69,12 @@ func firstRunPassphrase(boot *Bootstrap) (string, error) {
 	if boot.NoPassphrase {
 		return "", nil
 	}
-	if p := os.Getenv("EASM_KEY_PASSPHRASE"); p != "" {
+	if p, ok, err := envPassphrase(); ok {
+		if err != nil {
+			return "", err
+		}
 		if len(p) < minPassphrase {
-			return "", fmt.Errorf("EASM_KEY_PASSPHRASE must be at least %d characters", minPassphrase)
+			return "", fmt.Errorf("the passphrase from EASM_KEY_PASSPHRASE(_FILE) must be at least %d characters", minPassphrase)
 		}
 		return p, nil
 	}
@@ -80,7 +83,7 @@ func firstRunPassphrase(boot *Bootstrap) (string, error) {
 			return "", errUseWindows
 		}
 		return "", errors.New("first start needs a passphrase to protect the database encryption key. " +
-			"Run the program once from a terminal to be asked for it, set EASM_KEY_PASSPHRASE, " +
+			"Run the program once from a terminal to be asked for it, set EASM_KEY_PASSPHRASE or EASM_KEY_PASSPHRASE_FILE, " +
 			"or start with -no-passphrase to store the key unprotected (not recommended)")
 	}
 	_, _ = fmt.Fprintf(os.Stderr, "\nFirst start: choose a passphrase to protect the database encryption key.\n"+

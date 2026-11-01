@@ -1,0 +1,49 @@
+# Ingress: only the ingress controller reaches the web interface. Adjust the namespace
+# label to your controller (ingress-nginx, gke-managed, app-routing-system for AKS, ...).
+#
+# Egress: DNS through the cluster, and the internet for the scanner (public DNS resolvers,
+# intelligence sources, active checks of your public hosts, SMTP), but never the cluster's own
+# networks or the cloud metadata server. The agent refuses non-public addresses itself too.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: easm-agent
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: easm-agent
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - {protocol: TCP, port: 8080}
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 100.64.0.0/10
+              - 169.254.0.0/16
+              - 127.0.0.0/8
+        - ipBlock:
+            cidr: ::/0
+            except:
+              - fc00::/7
+              - fe80::/10
+              - ::1/128

@@ -41,7 +41,7 @@ jobs:
           REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
           SHA: ${{ github.sha }}
-          UAT_JOBS: "4" # the "UAT:" jobs below; keep in step when adding or removing one
+          UAT_JOBS: "5" # the "UAT:" jobs below; keep in step when adding or removing one
         run: |
           # A green run is not enough: skipped jobs leave a run green, so count UAT jobs that succeeded.
           ids=$(gh api "repos/$REPO/actions/workflows/release.yml/runs?head_sha=$SHA&status=success&per_page=100" \
@@ -168,6 +168,70 @@ jobs:
         run: |
           pre=""; case "$TAG" in *-rc.*) pre="--prerelease" ;; esac
           gh release create "$TAG" dist/* --verify-tag $pre --title "EASM Agent ${TAG#v}" --generate-notes
+
+  image:
+    name: Container image
+    needs: release
+    if: ${{ !cancelled() && needs.release.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # download the release
+      packages: write # push to ghcr.io
+      id-token: write # build provenance (OIDC identity for the attestation)
+      attestations: write # build provenance
+    outputs:
+      image: ${{ steps.build.outputs.image }}
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+          check-latest: true
+          cache: false
+
+      # The image is made from the published, signed binaries: exactly what users download.
+      - name: Download the release and verify its signature
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release download "$TAG" -D dist
+          go run ./tools/release verify -dir dist
+
+      - name: Build and push (linux/amd64, linux/arm64)
+        id: build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+          OWNER: ${{ github.repository_owner }}
+          TAG: ${{ github.ref_name }}
+          REVISION: ${{ github.sha }}
+          BUILDKIT: moby/buildkit:v0.34.1@sha256:99368f3e46177c6405b9740e4461d91cee004128daeecca78d4ceac50ec1da5c
+        run: |
+          image="ghcr.io/$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')/easm-agent"
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+          docker buildx create --use --name easm --driver docker-container --driver-opt "image=$BUILDKIT"
+          # No RUN steps, so no emulation is needed for arm64; provenance is attested below instead.
+          docker buildx build --platform linux/amd64,linux/arm64 --provenance=false --push \
+            --build-arg "VERSION=${TAG#v}" --build-arg "REVISION=$REVISION" \
+            --tag "$image:${TAG#v}" --metadata-file "$RUNNER_TEMP/meta.json" .
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "digest=$(jq -r '."containerimage.digest"' "$RUNNER_TEMP/meta.json")" >> "$GITHUB_OUTPUT"
+
+      - name: Image provenance (SLSA)
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ steps.build.outputs.image }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Sign out of the registry
+        if: always()
+        run: docker logout ghcr.io
 
   # ---- UAT: runs only for an RC, against the commit and the build it just published ----
 
@@ -356,3 +420,111 @@ jobs:
             ${{ runner.temp }}\uat\lab.log
             ${{ runner.temp }}\uat\lab.err
           if-no-files-found: ignore
+
+  uat-container:
+    name: "UAT: container image and Kubernetes deployment"
+    needs: image
+    # !cancelled(): without a status function GitHub skips this job, because uat-passed (an ancestor) is skipped for an RC.
+    if: ${{ !cancelled() && needs.image.result == 'success' && contains(github.ref_name, '-rc.') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read # gh attestation verify
+      packages: read # pull the image
+    env:
+      REF: ${{ needs.image.outputs.image }}@${{ needs.image.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Pull the image and check its provenance, version and defaults
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+          docker pull "$REF"
+          docker logout ghcr.io
+          gh attestation verify "oci://$REF" --repo "$GITHUB_REPOSITORY"
+          test "$(docker run --rm "$REF" -version)" = "easm-agent ${TAG#v}"
+          cfg=$(docker image inspect "$REF" --format '{{.Config.User}} {{json .Config.Env}}')
+          echo "$cfg"
+          echo "$cfg" | grep -q '^65532:65532 ' && echo "$cfg" | grep -q 'EASM_MANAGED=1'
+
+      - name: "Docker: hardened run, first start, managed mode, graceful stop, restart"
+        run: |
+          set -euo pipefail
+          openssl rand -hex 24 > "$RUNNER_TEMP/passphrase"
+          chmod 0644 "$RUNNER_TEMP/passphrase" # the container user (65532) reads it
+          docker volume create easm-data
+          start() {
+            docker run -d --name easm --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges \
+              -e EASM_KEY_PASSPHRASE_FILE=/run/secrets/passphrase -v "$RUNNER_TEMP/passphrase:/run/secrets/passphrase:ro" \
+              -v easm-data:/data -p 127.0.0.1:8443:8443 "$REF"
+          }
+          up() { for _ in $(seq 60); do curl -skf https://127.0.0.1:8443/healthz && return 0; sleep 2; done; docker logs easm; return 1; }
+          start && up
+          code=$(docker exec easm /usr/local/bin/easm-agent -show-setup-code -data-dir /data/easm)
+          [[ "$code" =~ ^[A-Z0-9]{5}(-[A-Z0-9]{5}){3}$ ]] || { echo "setup code has the wrong shape"; exit 1; }
+          curl -skf https://127.0.0.1:8443/setup | grep -q 'name="code"'
+          if docker exec easm /usr/local/bin/easm-agent -update -yes -data-dir /data/easm 2> "$RUNNER_TEMP/update.err"; then
+            echo "managed mode did not refuse a self-update"; exit 1
+          fi
+          grep -q "managed by its container image" "$RUNNER_TEMP/update.err"
+          t0=$(date +%s); docker stop -t 30 easm; took=$(( $(date +%s) - t0 ))
+          rc=$(docker inspect easm --format '{{.State.ExitCode}}')
+          echo "stopped in ${took}s with exit code $rc"
+          [ "$rc" = "0" ] && [ "$took" -lt 25 ] || { echo "SIGTERM was not handled gracefully"; exit 1; }
+          docker rm easm
+          start && up # a restart unlocks the existing key from the passphrase file
+          docker logs easm 2>&1 | grep -q "agent started"
+          docker rm -f easm
+
+      - name: Install kind (checksum-verified release)
+        env:
+          KIND_VERSION: v0.33.0
+          KIND_SHA256: aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/kind" "https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-linux-amd64"
+          echo "${KIND_SHA256}  $RUNNER_TEMP/kind" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/kind"
+
+      - name: "Kubernetes: deploy deploy/kubernetes to a kind cluster and use it"
+        env:
+          NODE_IMAGE: kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/kind" create cluster --name easm --image "$NODE_IMAGE" --wait 180s
+          docker tag "$REF" easm-agent:uat
+          "$RUNNER_TEMP/kind" load docker-image easm-agent:uat --name easm
+          kubectl create namespace easm
+          kubectl -n easm create secret generic easm-key-passphrase --from-file=passphrase="$RUNNER_TEMP/passphrase"
+          # The manifests exactly as shipped, with only the image swapped for the one under test.
+          kubectl kustomize deploy/kubernetes | sed -E 's#image: ghcr.io/[^ ]+/easm-agent:[^ ]+#image: easm-agent:uat#' > "$RUNNER_TEMP/easm.yaml"
+          grep -q 'image: easm-agent:uat' "$RUNNER_TEMP/easm.yaml"
+          kubectl apply -f "$RUNNER_TEMP/easm.yaml"
+          kubectl -n easm rollout status statefulset/easm-agent --timeout=300s
+          code=$(kubectl -n easm exec easm-agent-0 -- /usr/local/bin/easm-agent -show-setup-code -data-dir /data/easm)
+          [[ "$code" =~ ^[A-Z0-9]{5}(-[A-Z0-9]{5}){3}$ ]] || { echo "setup code has the wrong shape"; exit 1; }
+          kubectl -n easm port-forward svc/easm-agent 18080:80 > /dev/null & pf=$!
+          for _ in $(seq 30); do curl -sf http://127.0.0.1:18080/healthz && break; sleep 1; done
+          curl -sf http://127.0.0.1:18080/setup | grep -q 'name="code"'
+          kill "$pf"
+          # The namespace enforces the "restricted" Pod Security Standard, so admission proves compliance.
+          test "$(kubectl get ns easm -o jsonpath='{.metadata.labels.pod-security\.kubernetes\.io/enforce}')" = restricted
+          # Replace the pod: it must come back and unlock the key from the mounted Secret.
+          kubectl -n easm delete pod easm-agent-0 --wait=true
+          kubectl -n easm wait --for=condition=Ready pod/easm-agent-0 --timeout=300s
+          kubectl -n easm logs easm-agent-0 | grep -q '"msg":"agent started"'
+          test "$(kubectl -n easm get pod easm-agent-0 -o jsonpath='{.metadata.uid}')" != ""
+
+      - name: Diagnostics
+        if: failure()
+        run: |
+          docker logs easm 2>&1 | tail -n 50 || true
+          kubectl -n easm describe statefulset,pod 2>/dev/null | tail -n 80 || true
+          kubectl -n easm logs easm-agent-0 --tail=80 2>/dev/null || true
+          kubectl -n easm get events --sort-by=.lastTimestamp 2>/dev/null | tail -n 30 || true

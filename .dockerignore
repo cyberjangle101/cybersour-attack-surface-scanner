@@ -1,0 +1,5 @@
+# The image only needs the release binaries and the empty mount point.
+*
+!dist/easm-agent-linux-amd64
+!dist/easm-agent-linux-arm64
+!deploy/container/data/
