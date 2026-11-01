@@ -52,7 +52,11 @@ Check 'EV-2.9' 'viewer can read evidence (read-only role)' (($vv.c -eq 200) -and
 $cv = Row $f 'CVE-2019-0708'; $cid = if ($cv -match '/findings/(\d+)/evidence') { $Matches[1] }
 Check 'EV-2.10' 'CVE finding evidence links the NVD record' ((Invoke-Page $a $B "/findings/$cid/evidence").b -match 'nvd\.nist\.gov/vuln/detail/CVE-2019-0708')
 $ex = Row $f 'expir'; $eid = if ($ex -match '/findings/(\d+)/evidence') { $Matches[1] }
-Check 'EV-2.11' 'domain-expiry evidence links RDAP and crt.sh' (((Invoke-Page $a $B "/findings/$eid/evidence").b -match 'rdap\.org/domain/acme-corp\.test') -and ((Invoke-Page $a $B "/findings/$eid/evidence").b -match 'crt\.sh/\?q=acme-corp\.test'))
+$xp = (Invoke-Page $a $B "/findings/$eid/evidence").b
+Check 'EV-2.11' 'domain-expiry evidence links RDAP, not unrelated certificate search' (($xp -match 'rdap\.org/domain/acme-corp\.test') -and ($xp -notmatch 'crt\.sh'))
+$dc = Row $f 'herokuapp'; $did = if ($dc -match '/findings/(\d+)/evidence') { $Matches[1] }
+$dp = if ($did) { (Invoke-Page $a $B "/findings/$did/evidence").b } else { '' }
+Check 'EV-2.13' 'dangling-CNAME evidence links the published CNAME record, not crt.sh' (($dp -match 'dns\.google/resolve\?type=CNAME&amp;name=staging\.acme-corp\.test') -and ($dp -notmatch 'crt\.sh')) "finding $did"
 Check 'EV-2.12' 'unknown finding id is a 404' ((Invoke-Page $a $B '/findings/99999/evidence').c -eq 404)
 
 $script:Results | Export-Csv (OutPath 'evidence-results.csv') -NoTypeInformation

@@ -75,23 +75,78 @@ func evidenceLinks(f *Finding, ip string, cves []string) []EvidenceLink {
 	for _, c := range cves {
 		l = append(l, EvidenceLink{c + " (NVD)", "https://nvd.nist.gov/vuln/detail/" + c, "the vulnerability record"})
 	}
+	// First, any web address the finding itself names (the public file, the exposed page, ...):
+	// it is the most direct thing to check.
+	l = append(l, detailLinks(f.Detail)...)
 	d := f.Host
-	if ip == "" && d != "" && net.ParseIP(d) == nil {
-		e := url.QueryEscape(d)
-		switch f.Kind {
-		case "domain-expiry", "lookalike-domain":
-			l = append(l, EvidenceLink{"RDAP registration record", "https://rdap.org/domain/" + url.PathEscape(d), "registrar, dates and status"})
-		case "email-auth":
+	if ip == "" && dnsNameRe.MatchString(d) && net.ParseIP(d) == nil {
+		e, p := url.QueryEscape(d), url.PathEscape(d)
+		crt := EvidenceLink{"crt.sh certificates", "https://crt.sh/?q=" + e, "certificate transparency entries for the name"}
+		switch {
+		case strings.HasPrefix(f.Kind, "tls-"):
+			l = append(l, EvidenceLink{"SSL Labs test", "https://www.ssllabs.com/ssltest/analyze.html?hideResults=on&d=" + e, "an independent check of the certificate and TLS set-up"}, crt)
+		case f.Kind == "lookalike-domain":
+			l = append(l,
+				EvidenceLink{"RDAP registration record", "https://rdap.org/domain/" + p, "registrar, dates and status"},
+				EvidenceLink{"urlscan.io", "https://urlscan.io/search/#domain:" + e, "what the site has shown when others scanned it"},
+				crt) // a certificate for a look-alike often means a phishing site is being set up
+		case f.Kind == "domain-expiry":
+			l = append(l, EvidenceLink{"RDAP registration record", "https://rdap.org/domain/" + p, "registrar, dates and status"})
+		case f.Kind == "email-auth":
 			l = append(l, EvidenceLink{"MXToolbox lookup", "https://mxtoolbox.com/SuperTool.aspx?action=mx%3a" + e, "mail and DNS records as seen from the internet"})
-		case "dangling-cname":
+		case f.Kind == "dangling-cname", f.Kind == "subdomain-takeover":
 			l = append(l, EvidenceLink{"Google public DNS (JSON)", "https://dns.google/resolve?type=CNAME&name=" + e, "the CNAME record as published"})
+		case f.Kind == "hsts-missing", f.Kind == "no-https-redirect":
+			l = append(l, EvidenceLink{"securityheaders.com", "https://securityheaders.com/?followRedirects=on&q=" + e, "the response headers as seen from the internet"})
+		case f.Kind == "no-security-txt":
+			l = append(l, EvidenceLink{"security.txt on the site", "https://" + d + "/.well-known/security.txt", "the file the finding says is missing"})
+		case f.Kind == "default-page", f.Kind == "login-portal":
+			l = append(l, EvidenceLink{"The site", "https://" + d + "/", "open the page the finding is about"})
+		case f.Kind == "repo-exposure":
+			l = append(l, EvidenceLink{"GitHub code search", "https://github.com/search?type=code&q=" + url.QueryEscape(`"`+d+`"`), "every public file that mentions the domain"})
 		}
-		l = append(l, EvidenceLink{"crt.sh certificates", "https://crt.sh/?q=" + e, "certificate transparency entries for the name"})
 	}
 	if f.Kind == "leaked-credentials" {
 		l = append(l, EvidenceLink{"Have I Been Pwned", "https://haveibeenpwned.com/DomainSearch", "domain search (needs a verified domain)"})
 	}
+	return dedupeLinks(l)
+}
+
+// dnsNameRe accepts a plain host name, so links built from it cannot carry a path or query.
+var dnsNameRe = regexp.MustCompile(`^(?i)[a-z0-9_]([a-z0-9_-]*[a-z0-9_])?(\.[a-z0-9_]([a-z0-9_-]*[a-z0-9_])?)+\.?$`)
+
+// urlInText finds web addresses written in a finding's description.
+var urlInText = regexp.MustCompile(`https?://[^\s"'<>()]+`)
+
+// detailLinks turns the web addresses a finding's description names into links (at most 5).
+// Only http(s) with a host is kept, and trailing punctuation from the sentence is dropped.
+func detailLinks(detail string) []EvidenceLink {
+	var l []EvidenceLink
+	for _, raw := range urlInText.FindAllString(detail, 5) {
+		raw = strings.TrimRight(raw, ".,;:!?")
+		u, err := url.Parse(raw)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			continue
+		}
+		label, note := "Named in the finding", u.Host
+		if u.Host == "github.com" {
+			label, note = "The file on GitHub", "the public file the finding found"
+		}
+		l = append(l, EvidenceLink{label, u.String(), note})
+	}
 	return l
+}
+
+func dedupeLinks(in []EvidenceLink) []EvidenceLink {
+	seen := map[string]bool{}
+	out := in[:0]
+	for _, x := range in {
+		if !seen[x.Href] {
+			seen[x.Href] = true
+			out = append(out, x)
+		}
+	}
+	return out
 }
 
 // buildEvidence gathers the evidence for one finding.

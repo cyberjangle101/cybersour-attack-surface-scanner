@@ -130,14 +130,45 @@ func TestRawAnswerRedactsKeys(t *testing.T) {
 }
 
 func TestEvidenceLinksForDomainFindings(t *testing.T) {
-	links := evidenceLinks(&Finding{Kind: "domain-expiry", Host: "acme.test"}, "", nil)
-	var hrefs []string
-	for _, l := range links {
-		hrefs = append(hrefs, l.Href)
+	hrefs := func(f Finding) string {
+		var h []string
+		for _, l := range evidenceLinks(&f, "", nil) {
+			h = append(h, l.Href)
+		}
+		return strings.Join(h, " ")
 	}
-	all := strings.Join(hrefs, " ")
-	if !strings.Contains(all, "https://rdap.org/domain/acme.test") || !strings.Contains(all, "https://crt.sh/?q=acme.test") || strings.Contains(all, "shodan") {
-		t.Errorf("domain-expiry links: %v", hrefs)
+	// Each kind gets checks that fit it; certificate transparency only where certificates matter.
+	for _, c := range []struct {
+		f         Finding
+		want, not []string
+	}{
+		{Finding{Kind: "domain-expiry", Host: "acme.test"}, []string{"https://rdap.org/domain/acme.test"}, []string{"crt.sh", "shodan"}},
+		{Finding{Kind: "repo-exposure", Host: "apax.com",
+			Detail: `The public repository github.com/1979139113/0day-today-exploits mentions apax.com near the word "password" (10501.txt). Check whether it holds real secrets: https://github.com/1979139113/0day-today-exploits/blob/8b2194688e3c722fe9369b045e37382e7f45e12b/10501.txt`},
+			[]string{"https://github.com/1979139113/0day-today-exploits/blob/8b2194688e3c722fe9369b045e37382e7f45e12b/10501.txt", "https://github.com/search?type=code&q=%22apax.com%22"},
+			[]string{"crt.sh"}},
+		{Finding{Kind: "tls-expiring", Host: "www.acme.test"}, []string{"ssllabs.com", "https://crt.sh/?q=www.acme.test"}, nil},
+		{Finding{Kind: "lookalike-domain", Host: "acrne.test"}, []string{"https://rdap.org/domain/acrne.test", "urlscan.io", "https://crt.sh/?q=acrne.test"}, []string{"https://acrne.test"}},
+		{Finding{Kind: "no-security-txt", Host: "acme.test"}, []string{"https://acme.test/.well-known/security.txt"}, []string{"crt.sh"}},
+		{Finding{Kind: "hsts-missing", Host: "acme.test"}, []string{"securityheaders.com"}, []string{"crt.sh"}},
+		{Finding{Kind: "subdomain-takeover", Host: "old.acme.test"}, []string{"dns.google/resolve?type=CNAME&name=old.acme.test"}, []string{"crt.sh"}},
+		{Finding{Kind: "exposed-path", Host: "acme.test", Detail: "https://acme.test/.git/config is reachable."}, []string{"https://acme.test/.git/config"}, []string{"crt.sh", "config."}},
+		// A host that is not a plain name builds no links from it.
+		{Finding{Kind: "no-security-txt", Host: "acme.test/evil?x="}, nil, []string{"evil"}},
+		// Only http(s) addresses are taken from the text.
+		{Finding{Kind: "repo-exposure", Host: "acme.test", Detail: "see javascript:alert(1) and ftp://x.test/a"}, nil, []string{"javascript", "ftp://"}},
+	} {
+		all := hrefs(c.f)
+		for _, w := range c.want {
+			if !strings.Contains(all, w) {
+				t.Errorf("%s: missing %q in %s", c.f.Kind, w, all)
+			}
+		}
+		for _, n := range c.not {
+			if strings.Contains(all, n) {
+				t.Errorf("%s: must not contain %q: %s", c.f.Kind, n, all)
+			}
+		}
 	}
 	for key, want := range map[string]string{"vuln:203.0.113.5": "203.0.113.5", "asn:acme.test:2001:db8::5": "2001:db8::5", "priv:x.acme.test:10.0.0.1": "10.0.0.1", "email:acme.test:spf": ""} {
 		if ip, _ := findingAddress(&Finding{Key: key}); ip != want {
