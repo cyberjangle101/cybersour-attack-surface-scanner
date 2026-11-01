@@ -1414,6 +1414,17 @@ func (t *Tx) OpenFindings(root string) ([]openFinding, error) {
 	return out, rows.Err()
 }
 
+// ResolveOpenFindingsOfKind closes every open finding of one kind, for a check that was switched
+// off: nothing will re-check them, so they would otherwise stay open for ever. Risks someone
+// accepted (status 'ack') are kept. It returns how many were closed.
+func (s *Store) ResolveOpenFindingsOfKind(kind string) (int64, error) {
+	res, err := s.db.Exec(`UPDATE findings SET status='resolved', last_seen=? WHERE kind=? AND status='open'`, nowUTC(), kind)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
 // ResolveFinding marks a finding as no longer reproducing.
 func (t *Tx) ResolveFinding(id int64, now string) error {
 	_, err := t.tx.Exec(`UPDATE findings SET status='resolved', last_seen=? WHERE id=?`, now, id)

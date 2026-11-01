@@ -145,20 +145,6 @@
       <label class="check"><input type="checkbox" name="censys_token_clear"> Remove the saved Censys token</label>
     </div>
 
-    <h3>Have I Been Pwned (leaked accounts)</h3>
-    <div class="grid">
-      <label class="check"><input type="checkbox" name="hibp_enabled" {{if .S.HIBPEnabled}}checked{{end}}> Check whether accounts at your domains appear in data breaches <span class="hint">Needs a paid Have I Been Pwned key, and each domain must be verified in your HIBP dashboard. Only the domain name is sent. The affected addresses are not stored here; the finding points you to the HIBP dashboard.</span></label>
-      <label>API key <input type="password" name="hibp_key" autocomplete="new-password" placeholder="{{if .HasHIBP}}(saved; leave blank to keep){{else}}(not set){{end}}"></label>
-      <label class="check"><input type="checkbox" name="hibp_key_clear"> Remove the saved key</label>
-    </div>
-
-    <h3>GitHub (public code that names your domain)</h3>
-    <div class="grid">
-      <label class="check"><input type="checkbox" name="github_enabled" {{if .S.GitHubEnabled}}checked{{end}}> Search public GitHub code for your domain next to words like password, secret and token <span class="hint">Only the domain name is sent. Results are leads, not proof: many are harmless documentation, so accept the risk on those. Searches are spaced out to stay within GitHub&rsquo;s limit of 10 a minute.</span></label>
-      <label>Access token <input type="password" name="github_token" autocomplete="new-password" placeholder="{{if .HasGitHub}}(saved; leave blank to keep){{else}}(not set){{end}}"><span class="hint">A fine-grained token with no permissions is enough; code search just needs you to be signed in.</span></label>
-      <label class="check"><input type="checkbox" name="github_token_clear"> Remove the saved token</label>
-    </div>
-
     <h3>VirusTotal (API key)</h3>
     <div class="grid">
       <label class="check"><input type="checkbox" name="virustotal_enabled" {{if .S.VirusTotalEnabled}}checked{{end}}> Find subdomains through VirusTotal <span class="hint">Free keys allow 4 requests per minute and 500 per day, so the agent paces itself and reads at most 120 subdomains per scan.</span></label>
@@ -172,10 +158,33 @@
     <h2>Wider discovery</h2>
     <p class="muted">These look beyond the names you listed. They use DNS lookups and the public certificate logs only; nothing connects to anyone&rsquo;s servers.</p>
     <div class="grid">
-      <label class="check"><input type="checkbox" name="lookalike_enabled" {{if .S.LookalikeEnabled}}checked{{end}}> Look for look-alike domains <span class="hint">Tries typos, swapped and similar-looking letters, added words like &ldquo;-login&rdquo; and other endings of each domain, and reports the ones that exist. Raise a finding for each; accept the risk on ones that are yours.</span></label>
-      <label>Variations to try per scan <input name="lookalike_max" inputmode="numeric" value="{{.S.LookalikeMax}}"><span class="hint">10 to 2000. Each one costs a few DNS lookups.</span></label>
       <label class="check"><input type="checkbox" name="related_enabled" {{if .S.RelatedEnabled}}checked{{end}}> Suggest other domains that share certificates with yours</label>
       <label class="check"><input type="checkbox" name="reverseip_enabled" {{if .S.ReverseIPEnabled}}checked{{end}}> Suggest other domains on the same address (uses HackerTarget&rsquo;s free quota) <span class="hint">Skipped for shared hosting.</span></label>
+    </div>
+  </section>
+
+  <section class="card" id="threatintel">
+    <h2>Threat intelligence <span class="badge">off by default</span></h2>
+    <p class="muted">These watch for threats <em>outside</em> your own attack surface: other people&rsquo;s domains, public code and breaches. They are leads for a threat-intelligence team rather than exposures you can fix, and they are noisier, so they are off unless you switch them on. Switching one off closes its open findings (risks you accepted are kept).</p>
+
+    <h3>Look-alike domains</h3>
+    <div class="grid">
+      <label class="check"><input type="checkbox" name="lookalike_enabled" {{if .S.LookalikeEnabled}}checked{{end}}> Look for look-alike domains <span class="hint">Tries typos, swapped and similar-looking letters, added words like &ldquo;-login&rdquo; and other endings of each domain. Reports the ones someone else registered that accept email or have a website; parked and for-sale names are left out.</span></label>
+      <label>Variations to try per scan <input name="lookalike_max" inputmode="numeric" value="{{.S.LookalikeMax}}"><span class="hint">10 to 2000. Each one costs a few DNS lookups.</span></label>
+    </div>
+
+    <h3>GitHub (public code that names your domain)</h3>
+    <div class="grid">
+      <label class="check"><input type="checkbox" name="github_enabled" {{if .S.GitHubEnabled}}checked{{end}}> Search public GitHub code for your domain next to words like password, secret and token <span class="hint">Only the domain name is sent. Results are leads, not proof: many are harmless documentation, so accept the risk on those. Searches are spaced out to stay within GitHub&rsquo;s limit of 10 a minute.</span></label>
+      <label>Access token <input type="password" name="github_token" autocomplete="new-password" placeholder="{{if .HasGitHub}}(saved; leave blank to keep){{else}}(not set){{end}}"><span class="hint">A fine-grained token with no permissions is enough; code search just needs you to be signed in.</span></label>
+      <label class="check"><input type="checkbox" name="github_token_clear"> Remove the saved token</label>
+    </div>
+
+    <h3>Have I Been Pwned (leaked accounts)</h3>
+    <div class="grid">
+      <label class="check"><input type="checkbox" name="hibp_enabled" {{if .S.HIBPEnabled}}checked{{end}}> Check whether accounts at your domains appear in data breaches <span class="hint">Needs a paid Have I Been Pwned key, and each domain must be verified in your HIBP dashboard. Only the domain name is sent. The affected addresses are not stored here; the finding points you to the HIBP dashboard.</span></label>
+      <label>API key <input type="password" name="hibp_key" autocomplete="new-password" placeholder="{{if .HasHIBP}}(saved; leave blank to keep){{else}}(not set){{end}}"></label>
+      <label class="check"><input type="checkbox" name="hibp_key_clear"> Remove the saved key</label>
     </div>
   </section>
 
