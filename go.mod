@@ -3,15 +3,15 @@ module easm-agent
 go 1.26.0
 
 require (
-	github.com/go-asn1-ber/asn1-ber v1.5.5
-	github.com/go-ldap/ldap/v3 v3.4.8
+	github.com/go-asn1-ber/asn1-ber v1.5.8
+	github.com/go-ldap/ldap/v3 v3.4.15
 	github.com/go-pdf/fpdf v0.9.0
-	github.com/kardianos/service v1.2.2
-	github.com/miekg/dns v1.1.62
-	github.com/ncruces/go-sqlite3 v0.30.5
+	github.com/kardianos/service v1.3.0
+	github.com/miekg/dns v1.1.73
+	github.com/ncruces/go-sqlite3 v0.35.6
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	golang.org/x/crypto v0.58.0
-	golang.org/x/net v0.61.0
+	golang.org/x/net v0.62.0
 	golang.org/x/sys v0.49.0
 	golang.org/x/term v0.47.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -20,10 +20,7 @@ require (
 require (
 	github.com/Azure/go-ntlmssp v0.1.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
+	github.com/ncruces/go-sqlite3-wasm/v6 v6.3.35304 // indirect
 	github.com/ncruces/julianday v1.0.0 // indirect
-	github.com/tetratelabs/wazero v1.11.0 // indirect
-	golang.org/x/mod v0.41.0 // indirect
-	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
-	golang.org/x/tools v0.51.0 // indirect
 )

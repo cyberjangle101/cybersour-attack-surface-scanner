@@ -2,7 +2,7 @@
 
 A lightweight, single-binary agent for continuous **External Attack Surface Management (EASM)**. It runs as a persistent background service on Windows or Linux, watches the internet-facing footprint of the organisations you tell it about, and emails you only when something **changes**.
 
-> **Status:** v1.9.9. See "What's new in 1.9" below. Every check the agent runs is listed in [docs/RULES.md](docs/RULES.md).
+> **Status:** v1.9.10. See "What's new in 1.9" below. Every check the agent runs is listed in [docs/RULES.md](docs/RULES.md).
 
 ## Why
 
@@ -52,6 +52,11 @@ are emailed only about new subdomains, new IP/DNS records, new certificates and 
 * **Users:** admin, analyst and read-only viewer roles; local accounts with optional two-factor sign-in, or Active Directory sign-in (see *What's new in 1.6*).
 
 ## What's new in 1.9
+
+**v1.9.10 (dependency updates):**
+
+* **Database engine:** the SQLite driver goes from 0.30.5 to 0.35.6. SQLite now runs as WebAssembly translated into Go, instead of through a WebAssembly runtime. This needs no change to your data: encrypted databases from earlier versions open as before, which the release tests check by upgrading real v1.9.9 data. The binary is about 1 MB bigger, and speed is unchanged.
+* **Other libraries:** DNS (`miekg/dns` 1.1.73), Windows service (`kardianos/service` 1.3.0), LDAP (`go-ldap` 3.4.15, `asn1-ber` 1.5.8), and `golang.org/x/net` 0.62.0, which clears two advisories in its HTML parser (the agent never called the affected code).
 
 **v1.9.9 (every release is tested before it reaches you):**
 

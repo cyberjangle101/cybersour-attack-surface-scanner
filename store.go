@@ -9,8 +9,7 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/ncruces/go-sqlite3/driver" // pure-Go SQLite (WASM): no CGO, single static binary
-	_ "github.com/ncruces/go-sqlite3/embed"
+	_ "github.com/ncruces/go-sqlite3/driver" // pure-Go SQLite (WASM translated to Go, built in): no CGO, single static binary
 )
 
 var schemaStmts = []string{
