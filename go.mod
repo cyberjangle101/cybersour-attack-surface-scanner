@@ -6,7 +6,7 @@ require (
 	github.com/go-asn1-ber/asn1-ber v1.5.5
 	github.com/go-ldap/ldap/v3 v3.4.8
 	github.com/go-pdf/fpdf v0.9.0
-	github.com/kardianos/service v1.2.2
+	github.com/kardianos/service v1.3.0
 	github.com/miekg/dns v1.1.62
 	github.com/ncruces/go-sqlite3 v0.30.5
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
