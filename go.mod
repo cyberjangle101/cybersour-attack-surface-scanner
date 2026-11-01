@@ -3,8 +3,8 @@ module easm-agent
 go 1.26.0
 
 require (
-	github.com/go-asn1-ber/asn1-ber v1.5.5
-	github.com/go-ldap/ldap/v3 v3.4.8
+	github.com/go-asn1-ber/asn1-ber v1.5.8
+	github.com/go-ldap/ldap/v3 v3.4.15
 	github.com/go-pdf/fpdf v0.9.0
 	github.com/kardianos/service v1.2.2
 	github.com/miekg/dns v1.1.62
