@@ -13,7 +13,7 @@ type FindingInfo struct {
 var findingCatalog = map[string]FindingInfo{
 	"lookalike-domain": {
 		Title:    "A look-alike of your domain is registered",
-		Source:   "DNS: a variation of your domain name (a typo, a similar-looking character, another ending) exists",
+		Source:   "DNS: a variation of your domain name (a typo, a similar-looking character, another ending) is registered by someone else and accepts email or has a web address. Parked or for-sale names and your own registrations are left out.",
 		Risk:     "Someone has registered a name that people could mistake for yours. These are used for phishing emails, fake login pages and intercepting mail sent to a mistyped address. A domain that accepts email is the more serious case.",
 		Solution: "Find out who owns it (registration lookup). If it is yours, accept the risk so it stops being reported. If it is not, consider a takedown request through the registrar, block it in your mail and web filters, and brief staff about it. Consider registering the likeliest typos yourself.",
 	},
@@ -293,10 +293,10 @@ var findingCatalog = map[string]FindingInfo{
 	},
 	"ip-flagged": {
 		Title:  "Address flagged as compromised or malicious",
-		Source: "Exposure intelligence (tags on Shodan InternetDB / Shodan) and SANS Internet Storm Center attack reports",
-		Risk: "The intelligence source tags this IP as compromised, running malware or carrying a known backdoor. " +
-			"It may be hosting attacker tooling or be part of a botnet.",
-		Solution: "Treat the host as potentially compromised: isolate it, investigate, and rebuild from a known-good image if confirmed.",
+		Source: "Exposure intelligence (tags on Shodan InternetDB / Shodan) and SANS Internet Storm Center: attack reports from many sensors, or a compromised-host feed listing, in the last 30 days",
+		Risk: "Shodan tags this IP as compromised, running malware or carrying a known backdoor, or SANS ISC has recently seen it attacking " +
+			"other systems. It may be hosting attacker tooling or be part of a botnet. SANS ISC alone shows attacking traffic, not how it started, so it is rated Medium.",
+		Solution: "Check what this address sends out and whether it is still yours (cloud addresses change hands). Treat the host as potentially compromised: isolate it, investigate, and rebuild from a known-good image if confirmed.",
 	},
 	"eol-software": {
 		Title:    "End-of-life operating system or software",

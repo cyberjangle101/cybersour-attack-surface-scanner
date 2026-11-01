@@ -166,12 +166,25 @@ func TestLookalikeFindingsAppearAndResolve(t *testing.T) {
 	st, _ := h.store.LoadSettings()
 	st.LookalikeEnabled, st.LookalikeMax = true, 400
 	h.saveSettings(st)
-	// exmaple.test: registered, with mail; examlpe.test: registered by us (same name server); examp1e.test: not registered
-	h.dns.add(t, "exmaple.test. 60 IN NS ns.evil.test.")
+	// Reported: someone else's registration that can be used (mail and/or web).
+	h.dns.add(t, "exmaple.test. 60 IN NS ns.evil.test.") // swapped letters, with mail and web
 	h.dns.add(t, "exmaple.test. 60 IN MX 10 mx.exmaple.test.")
 	h.dns.add(t, "exmaple.test. 60 IN A 203.0.113.99")
-	h.dns.add(t, "xample.test. 60 IN NS ns.parked.test.")
-	h.dns.add(t, "exampel.test. 60 IN NS ns1.example.test.")
+	h.dns.add(t, "xample.test. 60 IN NS ns.other.test.") // missing letter, web only
+	h.dns.add(t, "xample.test. 60 IN A 198.51.100.50")
+	// Not reported:
+	h.dns.add(t, "exampel.test. 60 IN NS ns1.example.test.")     // our own name servers (defensive)
+	h.dns.add(t, "examlpe.test. 60 IN NS ns1.dns.example.test.") // name servers under our domain
+	h.dns.add(t, "exampe.test. 60 IN NS ns.registrar.test.")     // mail goes to our own servers
+	h.dns.add(t, "exampe.test. 60 IN MX 10 mail.example.test.")
+	h.dns.add(t, "exapmle.test. 60 IN NS ns.registrar.test.") // points at our own web server (a redirect)
+	h.dns.add(t, "exapmle.test. 60 IN A 203.0.113.10")
+	h.dns.add(t, "eexample.test. 60 IN NS ns1.afternic.com.") // for sale, even with mail and web
+	h.dns.add(t, "eexample.test. 60 IN MX 10 mx.afternic.com.")
+	h.dns.add(t, "eexample.test. 60 IN A 198.51.100.60")
+	h.dns.add(t, "examplee.test. 60 IN NS ns.parked.test.") // registered, but neither mail nor web
+	h.dns.add(t, "exammple.test. 60 IN NS ns.other.test.")  // null MX: refuses email, no web
+	h.dns.add(t, "exammple.test. 60 IN MX 0 .")
 	tg := h.addTarget("example.test", "")
 	h.scan(tg.ID)
 
@@ -183,11 +196,8 @@ func TestLookalikeFindingsAppearAndResolve(t *testing.T) {
 	if mail.Severity != "medium" || !strings.Contains(mail.Detail, "accepts email") || mail.Host != "exmaple.test" {
 		t.Errorf("mail look-alike: %+v", mail)
 	}
-	if p := open["lookalike:example.test:xample.test"]; p.Severity != "low" {
-		t.Errorf("parked look-alike: %+v", p)
-	}
-	if _, ok := open["lookalike:example.test:exampel.test"]; ok {
-		t.Error("a name served by our own name servers must not be reported")
+	if p := open["lookalike:example.test:xample.test"]; p.Severity != "low" || !strings.Contains(p.Detail, "It has a web address.") {
+		t.Errorf("web-only look-alike: %+v", p)
 	}
 
 	// the other party gives it up -> the finding closes itself

@@ -2,7 +2,7 @@
 
 A lightweight, single-binary agent for continuous **External Attack Surface Management (EASM)**. It runs as a persistent background service on Windows or Linux, watches the internet-facing footprint of the organisations you tell it about, and emails you only when something **changes**.
 
-> **Status:** v1.9.10. See "What's new in 1.9" below. Every check the agent runs is listed in [docs/RULES.md](docs/RULES.md).
+> **Status:** v1.9.11. See "What's new in 1.9" below. Every check the agent runs is listed in [docs/RULES.md](docs/RULES.md).
 
 ## Why
 
@@ -52,6 +52,17 @@ are emailed only about new subdomains, new IP/DNS records, new certificates and 
 * **Users:** admin, analyst and read-only viewer roles; local accounts with optional two-factor sign-in, or Active Directory sign-in (see *What's new in 1.6*).
 
 ## What's new in 1.9
+
+**v1.9.11 (fewer false positives in two rules):**
+
+* **Look-alike domains (EASM-BRAND-001)** now report only variations that someone else registered *and* that can be used: they accept email or have a web address. These are left out:
+  * names parked or for sale (Afternic, Sedo, Bodis, Dan.com and similar);
+  * names with neither mail nor web;
+  * names whose name servers or mail servers are under your domain, or that point at your own web server (your defensive registrations);
+  * bitsquatting variations, which on short names are mostly unrelated words.
+  
+  Tried on three well-known domains, this cut the findings by 48 to 81%.
+* **Address flagged as malicious (EASM-EXP-003):** SANS ISC now counts only *recent and substantial* activity: reports in the last 30 days from at least 100 sensors, or a compromised-host listing seen in the last 30 days. Older or sparser reports, such as a CDN's few stray reports over the years or a listing from 2017, stay as evidence on the asset page. A flag from SANS ISC alone is now Medium; Shodan's compromised tag stays High.
 
 **v1.9.10 (dependency updates):**
 

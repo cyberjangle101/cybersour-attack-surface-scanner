@@ -31,7 +31,7 @@ This is every check the EASM Agent runs against a monitored domain: the finding 
 | EASM-DNS-007 | Name shows an unclaimed service page (subdomain takeover) | `subdomain-takeover` | Active: connects to the organisation's own servers (opt-in) | High |
 | EASM-EXP-001 | Sensitive service reachable from the internet | `exposed-service` | Third-party intelligence (needs a second source to be trusted) | High for the high-risk ports, Medium for the other risky ports (see risky ports) |
 | EASM-EXP-002 | Host associated with known vulnerabilities (CVEs) | `known-vuln` | Third-party intelligence (needs a second source to be trusted) | High with any CVE in CISA KEV, an EPSS of 50% or more, or 10 or more CVEs; otherwise Medium |
-| EASM-EXP-003 | Address flagged as compromised or malicious | `ip-flagged` | Third-party intelligence (needs a second source to be trusted) | High |
+| EASM-EXP-003 | Address flagged as compromised or malicious | `ip-flagged` | Third-party intelligence (needs a second source to be trusted) | High when Shodan tags it, Medium when only SANS ISC reports it |
 | EASM-EXP-004 | End-of-life operating system or software | `eol-software` | Third-party intelligence (needs a second source to be trusted) | Medium |
 | EASM-EXP-005 | Address is a Tor exit node | `tor-exit` | Passive: Tor Project exit list (download) | Medium |
 | EASM-MAIL-001 | No SPF record | `email-auth/no-spf` | Passive: DNS | Medium |
@@ -492,11 +492,11 @@ This is every check the EASM Agent runs against a monitored domain: the finding 
 
 * **Finding type:** `ip-flagged`
 * **Collection:** Third-party intelligence (needs a second source to be trusted)
-* **Triggered when:** Shodan tags an address compromised, malware or doublepulsar, or SANS ISC has reports of it attacking DShield sensors or lists it on a compromised-host feed (Emerging Threats compromised, CINS Army). The two are independent, so together they make the finding trusted.
-* **Severity:** High
-* **Evidence:** Exposure intelligence (tags on Shodan InternetDB / Shodan) and SANS Internet Storm Center attack reports
-* **Why it matters:** The intelligence source tags this IP as compromised, running malware or carrying a known backdoor. It may be hosting attacker tooling or be part of a botnet.
-* **What to do:** Treat the host as potentially compromised: isolate it, investigate, and rebuild from a known-good image if confirmed.
+* **Triggered when:** Shodan tags an address compromised, malware or doublepulsar, or SANS ISC shows it recently attacking: reports in the last 30 days from at least 100 DShield sensors, or a compromised-host feed listing (Emerging Threats compromised, CINS Army) seen in the last 30 days. Older or sparser ISC data is kept as evidence only. The two sources are independent, so together they make the finding trusted.
+* **Severity:** High when Shodan tags it, Medium when only SANS ISC reports it
+* **Evidence:** Exposure intelligence (tags on Shodan InternetDB / Shodan) and SANS Internet Storm Center: attack reports from many sensors, or a compromised-host feed listing, in the last 30 days
+* **Why it matters:** Shodan tags this IP as compromised, running malware or carrying a known backdoor, or SANS ISC has recently seen it attacking other systems. It may be hosting attacker tooling or be part of a botnet. SANS ISC alone shows attacking traffic, not how it started, so it is rated Medium.
+* **What to do:** Check what this address sends out and whether it is still yours (cloud addresses change hands). Treat the host as potentially compromised: isolate it, investigate, and rebuild from a known-good image if confirmed.
 
 ### EASM-EXP-004: End-of-life operating system or software
 
@@ -524,9 +524,9 @@ This is every check the EASM Agent runs against a monitored domain: the finding 
 
 * **Finding type:** `lookalike-domain`
 * **Collection:** Passive: public sources (OSINT)
-* **Triggered when:** A registered variation of the domain resolves (see look-alike techniques).
+* **Triggered when:** A variation of the domain (see look-alike techniques) is registered by someone else and accepts email or has a web address. Left out: names on the domain's own name servers, or whose name servers or mail servers are under the domain, or that point at its own web server; names served by parking or resale services; and names with neither mail nor web.
 * **Severity:** Medium when it accepts email (MX), otherwise Low
-* **Evidence:** DNS: a variation of your domain name (a typo, a similar-looking character, another ending) exists
+* **Evidence:** DNS: a variation of your domain name (a typo, a similar-looking character, another ending) is registered by someone else and accepts email or has a web address. Parked or for-sale names and your own registrations are left out.
 * **Why it matters:** Someone has registered a name that people could mistake for yours. These are used for phishing emails, fake login pages and intercepting mail sent to a mistyped address. A domain that accepts email is the more serious case.
 * **What to do:** Find out who owns it (registration lookup). If it is yours, accept the risk so it stops being reported. If it is not, consider a takedown request through the registrar, block it in your mail and web filters, and brief staff about it. Consider registering the likeliest typos yourself.
 
@@ -783,7 +783,6 @@ A dangling CNAME to one of these is High, because anyone can claim the unused na
 Variations are generated locally and only looked up in DNS:
 
 * typos: a missing, repeated or swapped letter, a neighbouring key (QWERTY), a changed vowel, an added hyphen
-* bitsquatting: one bit different in a letter
 * look-alike characters: o→0, l→1, l→i, i→1, i→l, m→rn, w→vv, rn→m, vv→w, cl→d, s→5, e→3, a→4, b→d, g→q, u→v, n→m
 * Cyrillic homoglyphs (internationalised domain names): a→а, c→с, e→е, i→і, j→ј, o→о, p→р, s→ѕ, x→х, y→у
 * added words (`name-word`, `word-name`, `nameword`): `login`, `secure`, `support`, `portal`, `online`, `mail`, `account`, `verify`, `pay`, `my`, `app`, `help`

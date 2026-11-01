@@ -339,7 +339,12 @@ func (s *Scanner) applyIntel(tx *Tx, t *Target, d *intelData, asns map[string]*A
 			if flagBy["SANS ISC"] {
 				why = append(why, "appears in attack reports: "+iscNote)
 			}
-			raise("flag:"+ip, "ip-flagged", "high", host, where+" "+strings.Join(why, "; and "), strings.Join(sortedKeys(flagBy), ", "))
+			// SANS ISC alone shows the address attacking sensors, not that it was compromised.
+			sev := "high"
+			if !flagBy["Shodan tags"] {
+				sev = "medium"
+			}
+			raise("flag:"+ip, "ip-flagged", sev, host, where+" "+strings.Join(why, "; and "), strings.Join(sortedKeys(flagBy), ", "))
 		}
 		if eol := eolTags(tags); len(eol) > 0 {
 			var parts []string
