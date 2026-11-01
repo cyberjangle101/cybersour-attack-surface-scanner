@@ -16,10 +16,13 @@ Do this once, on a trusted machine. Only the maintainer holds the private key.
 
    It prints the **public** key and writes the **private** key to `release-signing.key`.
 
-2. Store the private key as a repository secret named `EASM_RELEASE_SIGNING_KEY`:
+2. Store the private key as an **environment** secret named `EASM_RELEASE_SIGNING_KEY` in both
+   release environments, not as a repository secret. Only jobs started from a `v*` tag can then
+   read it, and production runs also wait for approval:
 
    ```
-   gh secret set EASM_RELEASE_SIGNING_KEY < release-signing.key
+   gh secret set EASM_RELEASE_SIGNING_KEY --env UAT < release-signing.key
+   gh secret set EASM_RELEASE_SIGNING_KEY --env Production < release-signing.key
    ```
 
    Keep an offline copy (for example in a password manager), then delete the file.
@@ -63,13 +66,17 @@ key, and publish a release. Agents still on the old key need that release instal
    and stops if none did. It then uses the `Production` environment, so it waits until the
    owner approves it under Actions ("Review deployments").
 4. For either tag, the Release workflow:
-   - checks that README mentions the version, and runs the tests;
-   - builds `easm-agent-windows-amd64.exe`, `easm-agent-linux-amd64` and `easm-agent-linux-arm64`
-     with the newest Go toolchain and `-X main.version=X.Y.Z`;
-   - scans them with `govulncheck`;
-   - writes `SHA256SUMS` (headed `# easm-agent X.Y.Z`), signs it into `SHA256SUMS.sig`,
-     verifies the signature against the committed `release_key.go`, and only then publishes
-     the GitHub release with generated notes.
+   - in a read-only job with no secrets ("Build and scan"): checks that README mentions the
+     version, runs the tests, builds `easm-agent-windows-amd64.exe`, `easm-agent-linux-amd64` and
+     `easm-agent-linux-arm64` with the newest Go toolchain and `-X main.version=X.Y.Z`, and scans
+     them with a pinned `govulncheck`;
+   - in a separate job that runs only first-party code ("Sign and publish"): writes `SHA256SUMS`
+     (headed `# easm-agent X.Y.Z`), signs it into `SHA256SUMS.sig`, verifies the signature against
+     the committed `release_key.go`, records SLSA build provenance, and only then publishes the
+     GitHub release with generated notes.
+
+   Anyone can check a download came from this workflow:
+   `gh attestation verify easm-agent-windows-amd64.exe --repo cyberjangle101/cybersour-attack-surface-scanner`.
 
    If the secret and `release_key.go` do not match, the workflow stops before publishing.
 

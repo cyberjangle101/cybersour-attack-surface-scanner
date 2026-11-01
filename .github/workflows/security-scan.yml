@@ -14,6 +14,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   secret-scan:
     name: Secret scan (Gitleaks)
@@ -25,6 +29,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       # The release binary, not gitleaks/gitleaks-action: the repository only allows GitHub-owned and
       # verified-creator actions, and that action is neither (the run would end in startup_failure).
       - name: Install Gitleaks (checksum-verified release)
@@ -47,6 +52,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Review dependency changes
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
@@ -58,15 +65,40 @@ jobs:
     permissions:
       contents: read
     # Semgrep's native Windows build cannot run these rules, so the SAST gate runs here on Linux.
-    container: semgrep/semgrep:1.182.1
+    container: semgrep/semgrep:1.182.1@sha256:451b3d875c00dac7ed5db5293e584a07de11449a409c10b3c2d2652f429630b6
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Run Semgrep
         # Explicit rulesets: "--config auto" only works with usage metrics switched on.
         run: >-
           semgrep scan --error --metrics=off
           --config p/default --config p/golang --config p/secrets --config p/owasp-top-ten
           --exclude web/static .
+
+  workflow-lint:
+    name: Workflow security (zizmor)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # From PyPI with a pinned hash, not zizmorcore/zizmor-action: the repository only allows
+      # GitHub-owned and verified-creator actions.
+      - name: Install zizmor (hash-pinned)
+        run: |
+          python3 -m venv "$RUNNER_TEMP/zizmor"
+          echo "zizmor==1.31.1 --hash=sha256:58e878eb2dbd2c6183c105e1ac28c14f7dd1eca44a783f1fe2a69647d012c410" > "$RUNNER_TEMP/zizmor.txt"
+          "$RUNNER_TEMP/zizmor/bin/pip" install --quiet --only-binary=:all: --require-hashes -r "$RUNNER_TEMP/zizmor.txt"
+      # Flags script injection, unpinned or impostor action SHAs, broad permissions, persisted
+      # credentials, cache poisoning and dangerous triggers. The token enables the online checks.
+      - name: Audit the workflows
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: '"$RUNNER_TEMP/zizmor/bin/zizmor" --format github .github/workflows'
 
   # This advanced setup replaces CodeQL default setup (now disabled): GitHub rejects advanced uploads
   # while default setup is on. Same languages default setup covered.
@@ -75,11 +107,13 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      security-events: write
-      actions: read
+      security-events: write # upload CodeQL results to code scanning
+      actions: read # CodeQL reads workflow run metadata
     # One job (no matrix) so the check is reported under exactly this name.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
