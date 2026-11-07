@@ -1356,9 +1356,16 @@ func (t *Tx) AddCert(root string, c CertInfo, now string) (bool, error) {
 		c.Key, root, c.CommonName, joinSorted(c.Names), c.Issuer, c.NotBefore, c.NotAfter, c.CrtShID, now)
 }
 
+// findingRaised, when set (only by the tests), is told the kind of every finding a scan
+// raises, so the test suite can prove that every rule fires on test data.
+var findingRaised func(kind string)
+
 // UpsertFinding records a finding. It returns true when the finding is new or has
 // reappeared after being resolved, i.e. when an alert should be raised.
 func (t *Tx) UpsertFinding(root, key, kind, severity, host, detail, source, now string) (bool, error) {
+	if findingRaised != nil {
+		findingRaised(ruleKind(kind, key))
+	}
 	isNew, err := t.insertNew(`INSERT OR IGNORE INTO findings(key,root,kind,severity,scan_sev,host,detail,status,first_seen,last_seen,source) VALUES(?,?,?,?,?,?,?,'open',?,?,?)`,
 		key, root, kind, severity, severity, host, detail, now, now, source)
 	if err != nil || isNew {

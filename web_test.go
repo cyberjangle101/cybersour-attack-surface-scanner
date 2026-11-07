@@ -405,6 +405,9 @@ func settingsForm(s Settings) url.Values {
 	if s.UpdateCheck {
 		v.Set("update_check", "on")
 	}
+	if s.MCPEnabled {
+		v.Set("mcp_enabled", "on")
+	}
 	v.Set("smtp_host", s.SMTPHost)
 	v.Set("smtp_security", s.SMTPSecurity)
 	v.Set("smtp_username", s.SMTPUsername)

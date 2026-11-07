@@ -15,7 +15,7 @@
 <a class="skip" href="#main">Skip to content</a>
 <aside class="side" id="side" aria-label="Main menu">
   <div class="side-head">
-    <a class="brand" href="/"><img class="logo" src="/static/logo.png" alt="" width="30" height="30"><span>EASM Agent</span></a>
+    <a class="brand" href="/" aria-label="CyberSoar EASM, dashboard"><img class="wordmark" src="/static/wordmark.png" alt="CyberSoar EASM" width="133" height="44"></a>
     <a class="side-close" href="#main" aria-label="Close menu">×</a>
   </div>
   <nav>
@@ -57,6 +57,8 @@
 </header>
 {{with .Update}}<div class="updatebar noprint" role="status"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg><strong>New version available</strong><span>EASM Agent {{.Version}} is out; this agent runs {{.Running}}.</span>{{if .Managed}}<span>Deploy the {{.Version}} image to update.</span>{{else if .Admin}}<a class="btn small primary" href="/health#updates">Review and install</a>{{else}}<span>An administrator can install it.</span>{{end}}{{if .Notes}}<a href="{{.Notes}}" target="_blank" rel="noopener noreferrer">Release notes</a>{{end}}</div>{{end}}
 {{if .Scanning}}<div class="scanbar" role="status"><span class="pulse" aria-hidden="true"></span>Scanning <strong>{{.Scanning}}</strong>…</div>{{end}}
+{{else}}
+<header class="authbrand"><img src="/static/mark.png" alt="CyberSoar EASM" width="96" height="94"></header>
 {{end}}
 <main class="wrap" id="main">
 {{with .Flash}}<div class="flash {{.Kind}}" role="status">{{.Text}}</div>{{end}}

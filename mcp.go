@@ -109,6 +109,10 @@ func (s *Server) mcpPost(w http.ResponseWriter, r *http.Request, who *apiWho) {
 		rpcFail(w, http.StatusForbidden, nil, rpcInvalidRequest, "cross-origin requests are not allowed")
 		return
 	}
+	if st, err := s.store.LoadSettings(); err != nil || !st.MCPEnabled {
+		rpcFail(w, http.StatusForbidden, nil, rpcInvalidRequest, "AI assistant access (MCP) is switched off in this agent's Settings")
+		return
+	}
 	if v := r.Header.Get("MCP-Protocol-Version"); v != "" && !slices.Contains(mcpVersions, v) {
 		rpcFail(w, http.StatusBadRequest, nil, rpcInvalidRequest, "unsupported MCP-Protocol-Version "+clip(v, 20))
 		return

@@ -18,6 +18,8 @@ There is no tool that adds a domain, changes or accepts a finding, changes setti
 
 ## Set it up
 
+**Settings → AI assistants (MCP)** shows the same steps with this agent's own address filled in, copy buttons, the latest connections, and a switch that turns MCP off (every request to `/mcp` is then refused; the REST API is not affected).
+
 1. Sign in and open **your account → API tokens**. Create a token named after the assistant (for example `claude`).
    * Choose **Viewer** unless you want the assistant to be able to start rescans; then choose **Analyst**.
    * Give it an expiry date. The token is shown once.

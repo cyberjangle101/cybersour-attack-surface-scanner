@@ -496,13 +496,7 @@ var findingCatalog = map[string]FindingInfo{
 // describeFinding returns the explanation for a stored finding. Email-auth findings
 // encode their specific check in the key ("email:<root>:<code>").
 func describeFinding(f Finding) FindingInfo {
-	k := f.Kind
-	if f.Kind == "email-auth" {
-		if i := strings.LastIndex(f.Key, ":"); i >= 0 {
-			k = "email-auth/" + f.Key[i+1:]
-		}
-	}
-	info, ok := findingCatalog[k]
+	info, ok := findingCatalog[ruleKind(f.Kind, f.Key)]
 	if !ok {
 		info = FindingInfo{Title: f.Kind, Source: "EASM agent", Risk: "See the detail column.", Solution: "Investigate the detail and correct the underlying configuration."}
 	}
@@ -510,6 +504,17 @@ func describeFinding(f Finding) FindingInfo {
 		info.Source = f.Source
 	}
 	return info
+}
+
+// ruleKind is the catalogue entry for a finding's kind and key: email-auth findings name
+// their check in the last part of the key.
+func ruleKind(kind, key string) string {
+	if kind == "email-auth" {
+		if i := strings.LastIndex(key, ":"); i >= 0 {
+			return "email-auth/" + key[i+1:]
+		}
+	}
+	return kind
 }
 
 // sourceLabel is the display name of an intelligence source id.

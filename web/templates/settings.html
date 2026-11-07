@@ -213,6 +213,46 @@
     </div>
   </section>
 
+  {{with .MCP}}
+  <section class="card" id="mcp">
+    <h2>AI assistants (MCP) {{if .On}}<span class="badge good">on</span>{{else}}<span class="badge">off</span>{{end}}</h2>
+    <p class="muted">Connect an assistant that speaks the Model Context Protocol, such as Claude Code or Claude Desktop, so people can ask it things like <em>&ldquo;what are our worst open findings?&rdquo;</em> or <em>&ldquo;what changed this week?&rdquo;</em>. The assistant signs in with an API token and gets that token&rsquo;s role at most. It can read domains, findings, assets and events. With an Analyst token it can also queue a rescan of a domain that is already monitored. It can never add a domain, change a finding, or change settings or users.</p>
+    <div class="grid">
+      <label class="check wide"><input type="checkbox" name="mcp_enabled" {{if .On}}checked{{end}}> Allow AI assistants to connect <span class="hint">When off, every request to <span class="mono">/mcp</span> is refused, whatever the token. The REST API is not affected.</span></label>
+    </div>
+
+    <h3>Connect an assistant</h3>
+    <ol class="steps">
+      <li>Create an API token under <a href="/account#tokens">your account → API tokens</a>. Name it after the assistant (for example <span class="mono">claude</span>), choose <strong>Viewer</strong> unless it should be able to start rescans, and set an expiry date.</li>
+      <li>Add the server to the assistant, replacing <span class="mono">&lt;your token&gt;</span> with the token.</li>
+    </ol>
+    <p class="small"><strong>Endpoint</strong> <code class="mono" id="mcp-endpoint">{{.Endpoint}}</code> <button class="btn small" type="button" data-copy="mcp-endpoint">Copy</button></p>
+    <p class="small"><strong>Claude Code</strong>, in a terminal: <button class="btn small" type="button" data-copy="mcp-claude-code">Copy</button></p>
+    <pre class="snippet" id="mcp-claude-code">{{.ClaudeCode}}</pre>
+    <p class="small"><strong>Claude Desktop</strong>, and other clients that only start local servers, in the client&rsquo;s configuration file (it uses the <span class="mono">mcp-remote</span> bridge, which needs Node.js): <button class="btn small" type="button" data-copy="mcp-desktop">Copy</button></p>
+    <pre class="snippet" id="mcp-desktop">{{.Desktop}}</pre>
+    {{if .SelfSigned}}<p class="flash warn small">This agent uses its own self-signed certificate, which assistants refuse until they trust it. <a href="#certificate">Install a certificate</a> from your certificate authority, or add this one to the trusted store of the computer that runs the assistant (for Node-based clients, point <span class="mono">NODE_EXTRA_CA_CERTS</span> at it).</p>{{end}}
+
+    <h3>Tools the assistant gets</h3>
+    <div class="scroll"><table><thead><tr><th>Tool</th><th>What it does</th><th>Lowest token role</th></tr></thead>
+      <tbody>{{range .Tools}}<tr><td class="mono">{{.Name}}</td><td>{{.Title}}{{if .Writes}} <span class="badge warn">queues work</span>{{else}} <span class="badge">read-only</span>{{end}}</td><td>{{.Role}}</td></tr>{{end}}</tbody></table></div>
+
+    <h3>Before you connect one</h3>
+    <ul class="small">
+      <li><strong>Your findings go to the AI provider.</strong> Whatever the assistant reads (host names, addresses, findings) is sent to the company that runs the model, under its terms.</li>
+      <li><strong>Scan results can contain hostile text.</strong> Banners, page titles and certificate names are written by whoever runs the scanned system. The agent tells the assistant to treat them as data, but do not give the same assistant tools that act elsewhere (email, tickets, a shell) without approving each action.</li>
+      <li><strong>Web-based assistants such as claude.ai connect from the internet</strong> and cannot reach an agent inside your network. Use one that runs on a computer inside it.</li>
+    </ul>
+
+    <h3>Recent connections</h3>
+    {{if .Recent}}<div class="scroll"><table><thead><tr><th>When</th><th>Who</th><th>Client</th><th>Token</th></tr></thead>
+      <tbody>{{range .Recent}}<tr><td>{{ts .TS}}</td><td>{{.Actor}}</td><td>{{.Target}}</td><td class="small">{{.Detail}}</td></tr>{{end}}</tbody></table></div>
+    <p class="muted small">Every connection and every rescan an assistant asks for is in the <a href="/audit?action=mcp.">audit log</a>. Revoking the token cuts the assistant off at once.</p>
+    {{else}}<p class="muted small">No assistant has connected yet. Connections are recorded in the <a href="/audit">audit log</a>.</p>{{end}}
+    <p class="muted small">Streamable HTTP transport, protocol revisions {{.Versions}}. See <span class="mono">docs/MCP.md</span> for details.</p>
+  </section>
+  {{end}}
+
   <div class="sticky"><button class="btn primary" type="submit">Save settings</button></div>
 </form>
 

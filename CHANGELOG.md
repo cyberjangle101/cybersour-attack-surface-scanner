@@ -4,6 +4,12 @@ What changed in each release of EASM Agent, newest first. Releases and their sig
 
 ## 1.9
 
+**Unreleased (CyberSoar EASM logo pack, MCP settings, every rule tested end to end):**
+
+* **New logo.** The CyberSoar EASM logo pack replaces the radar icon: the wing and name in the sidebar, the stacked "CS EASM" mark on the sign-in and set-up pages, and the app icon for the program (Explorer, the taskbar and the notification area) and the browser tab. The logos have transparent backgrounds, so they suit the light and the dark theme. They are cut from the pack in `docs/brand` by `go run ./tools/icon`.
+* **AI assistants (MCP) in Settings.** A new Settings section explains the `/mcp` endpoint: this agent's own address, ready-to-paste set-up for Claude Code and Claude Desktop, the tools an assistant gets and which token role each needs, what to know before connecting one, and the latest connections. A switch turns MCP off (every request to `/mcp` is then refused, whatever the token; the REST API is not affected). It is on by default, as before; an assistant still needs an API token.
+* **Every rule is tested end to end.** The test suite now fails if any of the 77 rules is never raised by a scan of test data. New tests feed scans the SPF, DMARC and DKIM records, private address, managed-database name and weak TLS certificate (1024-bit RSA key, SHA-1 signature) behind the 14 rules that were only unit-tested before.
+
 **v1.9.18 (one page per domain, accessible light mode, public storage and API checks, update banner):**
 
 * **One page per domain.** Clicking a domain now opens its Findings page, filtered to that domain, with its scan buttons, its settings (in a card at the top: click to open), and its hosts, certificates, changes and scan history below. The separate `/targets/…` page is gone; old links and bookmarks go to the new page.

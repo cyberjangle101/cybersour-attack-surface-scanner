@@ -6,6 +6,18 @@ document.addEventListener('submit', function (e) {
 document.addEventListener('click', function (e) {
   if (e.target && e.target.hasAttribute && e.target.hasAttribute('data-print')) { window.print(); }
 });
+// Copy buttons: data-copy names the element whose text is copied (Settings → AI assistants).
+document.addEventListener('click', function (e) {
+  const btn = e.target && e.target.closest && e.target.closest('button[data-copy]');
+  if (!btn) { return; }
+  const src = document.getElementById(btn.getAttribute('data-copy'));
+  if (!src || !navigator.clipboard) { return; }
+  navigator.clipboard.writeText(src.textContent.trim()).then(function () {
+    const was = btn.textContent;
+    btn.textContent = 'Copied';
+    setTimeout(function () { btn.textContent = was; }, 1500);
+  }).catch(function () {});
+});
 // Long-running actions (e.g. connection checks): show progress and prevent double submits.
 document.addEventListener('submit', function (e) {
   if (e.defaultPrevented) { return; }

@@ -1,4 +1,4 @@
-<p align="center"><img src="web/static/logo.png" width="88" height="88" alt="EASM Agent logo: a radar sweep with one contact"></p>
+<p align="center"><img src="docs/brand/wordmark.png" width="332" height="110" alt="CyberSoar EASM logo: a wing in orange, crimson and green beside the name"></p>
 
 # Cybersour Attack Surface Scanner
 

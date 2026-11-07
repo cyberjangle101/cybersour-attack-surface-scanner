@@ -45,6 +45,10 @@ type Settings struct {
 	// administrators; installing is always their decision).
 	UpdateCheck bool
 
+	// MCPEnabled lets AI assistants connect to /mcp with an API token (Settings → AI
+	// assistants). Off refuses every MCP request; the REST API is not affected.
+	MCPEnabled bool
+
 	// Reporting digest email
 	DigestFrequency string // off | daily | weekly
 	DigestHour      int    // 0-23, server local time
@@ -133,6 +137,7 @@ func DefaultSettings() Settings {
 		ConcurrentScans:      2,
 
 		UpdateCheck: true,
+		MCPEnabled:  true, // still needs a token, which only a signed-in user can create
 
 		AlertMinEvents:         1,
 		AlertImmediateSeverity: "high",

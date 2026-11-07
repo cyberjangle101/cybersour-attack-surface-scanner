@@ -75,6 +75,9 @@ body.app { display: grid; grid-template-columns: var(--side-w) minmax(0, 1fr); m
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; color: var(--side-strong); letter-spacing: .2px; }
 .brand:hover { text-decoration: none; }
 img.logo { display: block; background: none; object-fit: contain; }
+img.wordmark { display: block; height: 44px; width: auto; }
+.authbrand { display: flex; justify-content: center; padding: 36px 16px 0; }
+.authbrand img { display: block; height: 94px; width: auto; }
 .logo { width: 30px; height: 30px; border-radius: 8px; display: inline-grid; place-items: center; background: linear-gradient(135deg, #2563eb, #7c3aed); color: #fff; font-weight: 800; }
 .side-close { display: none; color: var(--side-text); font-size: 1.5rem; line-height: 1; padding: 4px 8px; }
 .side nav { display: flex; flex-direction: column; gap: 2px; }
@@ -137,6 +140,8 @@ tr.dim { opacity: .6; }
 .badge.good { background: var(--good-bg); color: var(--good); } .badge.warn, .badge.sev-medium { background: var(--warn-bg); color: var(--warn); }
 .badge.bad, .badge.sev-high { background: var(--bad-bg); color: var(--bad); } .badge.info, .badge.sev-low { background: var(--info-bg); color: var(--info); }
 .badge.sev-info, .badge.muted { background: var(--muted-bg); color: var(--muted); }
+pre.snippet { white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; background: var(--muted-bg); padding: 10px 12px; border-radius: var(--radius); font-family: var(--mono); font-size: .82rem; margin: 4px 0 14px; }
+ol.steps { padding-left: 1.3rem; } ol.steps li { margin: 4px 0; }
 pre.notes { white-space: pre-wrap; max-height: 18rem; overflow: auto; background: var(--muted-bg); padding: 10px 12px; border-radius: var(--radius); font-size: .85rem; }
 
 .flash { padding: 10px 14px; border-radius: var(--radius); margin: 0 0 16px; border: 1px solid var(--line); background: var(--muted-bg); }

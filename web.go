@@ -1541,7 +1541,7 @@ func parseSettingsForm(r *http.Request, cur Settings) (Settings, error) {
 	s.SMTPTo = splitList(r.PostFormValue("smtp_to"), true)
 	s.AlertBaselineSummary, s.AlertCerts, s.AlertTXT = on("alert_baseline_summary"), on("alert_certs"), on("alert_txt")
 	s.AlertRemovals = on("alert_removals")
-	s.Require2FA = on("require_2fa")
+	s.Require2FA, s.MCPEnabled = on("require_2fa"), on("mcp_enabled")
 	s.ActiveChecks, s.ActiveForeign, s.ActivePaths, s.ActiveBuckets = on("active_checks"), on("active_foreign"), on("active_paths"), on("active_buckets")
 	s.ActiveServices, s.ActiveSNMP = on("active_services"), on("active_snmp")
 	s.Screenshots, s.ChromePath = on("screenshots"), strings.TrimSpace(r.PostFormValue("chrome_path"))
@@ -1575,6 +1575,7 @@ func (s *Server) settingsView(w http.ResponseWriter, r *http.Request, sess *Sess
 		"HasShodan": s.eng.HasSecret(secretShodan), "HasCensys": s.eng.HasSecret(secretCensys), "HasVT": s.eng.HasSecret(secretVT), "HasHIBP": s.eng.HasSecret(secretHIBP), "HasGitHub": s.eng.HasSecret(secretGitHub), "HasOTX": s.eng.HasSecret(secretOTX),
 		"Resolvers": strings.Join(st.DNSResolvers, "\n"), "Recipients": strings.Join(st.SMTPTo, "\n"),
 		"Listen": s.listenView(), "Cert": s.certView(), "Backup": s.backupView(),
+		"MCP": s.mcpView(r, st),
 	})
 }
 
